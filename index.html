@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <title>QAP Solver</title>
     <style>
-        body { font-family: sans-serif; max-width: 900px; margin: 20px auto; }
-        .matrix-container { overflow-x: auto; margin-bottom: 20px; max-height: 400px; overflow-y: auto; }
+        body { font-family: sans-serif; max-width: 900px; margin: 20px auto; padding: 0 10px; }
+        .matrix-container { overflow-x: auto; margin-bottom: 20px; max-height: 350px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; }
         table { border-collapse: collapse; }
         td { padding: 2px; }
         input[type="number"] { width: 50px; padding: 4px; font-size: 14px; text-align: center; }
         .hidden { display: none; }
-        button { padding: 10px 15px; font-size: 16px; cursor: pointer; margin-bottom: 20px;}
+        button { padding: 10px 15px; font-size: 16px; cursor: pointer; margin-bottom: 20px; }
         #resultBox { padding: 15px; background: #eef; border-radius: 5px; margin-top: 20px; }
     </style>
 </head>
@@ -29,27 +29,17 @@
         <h3>Flow Matrix</h3>
         <div class="matrix-container" id="flowContainer"></div>
 
-        <button id="solveBtn" disabled>Loading Solver...</button>
+        <button id="solveBtn" onclick="runSolver()">Solve QAP</button>
         
         <div id="resultBox" class="hidden">
-            <strong>Optimal Assignment:</strong> <span id="result"></span>
+            <strong>Optimal Assignment:</strong> <span id="resultAssignment"></span><br><br>
+            <strong>Total Cost:</strong> <span id="resultCost"></span>
         </div>
     </div>
 
-    <!-- Load the Emscripten JavaScript glue code -->
-    <script src="qap_solver.js"></script>
-    
     <script>
         let currentN = 0;
-        let isWasmLoaded = false;
 
-        // 1. Wait for WebAssembly to initialize
-        Module.onRuntimeInitialized = function() {
-            isWasmLoaded = true;
-            updateSolveButton();
-        };
-
-        // 2. Generate the N x N input grids
         function generateMatrices() {
             const nInput = document.getElementById('nSize').value;
             currentN = parseInt(nInput);
@@ -64,16 +54,13 @@
             
             document.getElementById('solverSection').classList.remove('hidden');
             document.getElementById('resultBox').classList.add('hidden');
-            updateSolveButton();
         }
 
-        // Helper to build HTML tables
         function buildTableHTML(prefix, n) {
             let html = '<table>';
             for (let i = 0; i < n; i++) {
                 html += '<tr>';
                 for (let j = 0; j < n; j++) {
-                    // Set diagonal to 0 automatically (standard in QAP)
                     const defaultVal = (i === j) ? 0 : 1; 
                     html += `<td><input type="number" id="${prefix}_${i}_${j}" value="${defaultVal}"></td>`;
                 }
@@ -83,15 +70,6 @@
             return html;
         }
 
-        function updateSolveButton() {
-            const btn = document.getElementById('solveBtn');
-            if (isWasmLoaded && currentN > 0) {
-                btn.disabled = false;
-                btn.innerText = "Solve QAP";
-            }
-        }
-
-        // Helper to read the HTML table back into a 1D flattened array
         function getFlattenedMatrix(prefix, n) {
             let arr = [];
             for (let i = 0; i < n; i++) {
@@ -103,38 +81,125 @@
             return arr;
         }
 
-        // 3. Handle the Solve button click
-        document.getElementById('solveBtn').onclick = () => {
-            if (!isWasmLoaded) return;
+        // ==========================================
+        // JS QAP Heuristic Solver (GRASP + 2-Opt + SA)
+        // ==========================================
 
-            // Extract values from the DOM
+        function calculateCost(n, distances, flows, assignment) {
+            let cost = 0;
+            for (let i = 0; i < n; i++) {
+                for (let j = 0; j < n; j++) {
+                    cost += flows[i * n + j] * distances[assignment[i] * n + assignment[j]];
+                }
+            }
+            return cost;
+        }
+
+        // O(N) cost difference when swapping elements at index u and v
+        function calculateDelta(n, distances, flows, assignment, u, v) {
+            let delta = 0;
+            for (let i = 0; i < n; i++) {
+                if (i !== u && i !== v) {
+                    delta += flows[u * n + i] * (distances[assignment[v] * n + assignment[i]] - distances[assignment[u] * n + assignment[i]]) +
+                             flows[i * n + u] * (distances[assignment[i] * n + assignment[v]] - distances[assignment[i] * n + assignment[u]]) +
+                             flows[v * n + i] * (distances[assignment[u] * n + assignment[i]] - distances[assignment[v] * n + assignment[i]]) +
+                             flows[i * n + v] * (distances[assignment[i] * n + assignment[u]] - distances[assignment[i] * n + assignment[v]]);
+                }
+            }
+            delta += flows[u * n + v] * (distances[assignment[v] * n + assignment[u]] - distances[assignment[u] * n + assignment[v]]) +
+                     flows[v * n + u] * (distances[assignment[u] * n + assignment[v]] - distances[assignment[v] * n + assignment[u]]);
+            return delta;
+        }
+
+        function localSearch2Opt(n, distances, flows, assignment, currentCost) {
+            let improvement = true;
+            while (improvement) {
+                improvement = false;
+                for (let u = 0; u < n - 1; u++) {
+                    for (let v = u + 1; v < n; v++) {
+                        let delta = calculateDelta(n, distances, flows, assignment, u, v);
+                        if (delta < 0) {
+                            let temp = assignment[u];
+                            assignment[u] = assignment[v];
+                            assignment[v] = temp;
+                            currentCost += delta;
+                            improvement = true;
+                        }
+                    }
+                }
+            }
+            return currentCost;
+        }
+
+        function solveQAP(n, distances, flows) {
+            // Initial assignment [0, 1, ..., n-1]
+            let bestAssignment = Array.from({length: n}, (_, i) => i);
+            let bestCost = calculateCost(n, distances, flows, bestAssignment);
+
+            // Phase 1: GRASP with 2-opt
+            const graspIterations = 50;
+            for (let iter = 0; iter < graspIterations; iter++) {
+                let currentAssignment = [...bestAssignment];
+                
+                // Shuffle array (Randomized Greedy Construction)
+                for (let i = currentAssignment.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [currentAssignment[i], currentAssignment[j]] = [currentAssignment[j], currentAssignment[i]];
+                }
+
+                let currentCost = calculateCost(n, distances, flows, currentAssignment);
+                currentCost = localSearch2Opt(n, distances, flows, currentAssignment, currentCost);
+
+                if (currentCost < bestCost) {
+                    bestCost = currentCost;
+                    bestAssignment = [...currentAssignment];
+                }
+            }
+
+            // Phase 2: Simulated Annealing
+            let currentAssignment = [...bestAssignment];
+            let currentCost = bestCost;
+            
+            let temperature = 10000.0;
+            const coolingRate = 0.999;
+            const absoluteTemperature = 1.0;
+
+            while (temperature > absoluteTemperature) {
+                let u = Math.floor(Math.random() * n);
+                let v = Math.floor(Math.random() * n);
+                while (u === v) {
+                    v = Math.floor(Math.random() * n);
+                }
+
+                let delta = calculateDelta(n, distances, flows, currentAssignment, u, v);
+
+                if (delta < 0 || Math.exp(-delta / temperature) > Math.random()) {
+                    let temp = currentAssignment[u];
+                    currentAssignment[u] = currentAssignment[v];
+                    currentAssignment[v] = temp;
+                    currentCost += delta;
+
+                    if (currentCost < bestCost) {
+                        bestCost = currentCost;
+                        bestAssignment = [...currentAssignment];
+                    }
+                }
+                temperature *= coolingRate;
+            }
+
+            return { assignment: bestAssignment, cost: bestCost };
+        }
+
+        function runSolver() {
             const distArr = getFlattenedMatrix('dist', currentN);
             const flowArr = getFlattenedMatrix('flow', currentN);
 
-            // Create C++ vectors from JS arrays
-            let distVec = new Module.VectorInt();
-            let flowVec = new Module.VectorInt();
-            distArr.forEach(val => distVec.push_back(val));
-            flowArr.forEach(val => flowVec.push_back(val));
+            const result = solveQAP(currentN, distArr, flowArr);
 
-            // Call the C++ function
-            let resultVec = Module.solveQAP(currentN, distVec, flowVec);
-
-            // Extract the results back to a JS array
-            let resultArr = [];
-            for (let i = 0; i < resultVec.size(); i++) {
-                resultArr.push(resultVec.get(i));
-            }
-            
-            // Display Result
-            document.getElementById('result').innerText = resultArr.join('  ➔  ');
+            document.getElementById('resultAssignment').innerText = result.assignment.join('  ➔  ');
+            document.getElementById('resultCost').innerText = result.cost;
             document.getElementById('resultBox').classList.remove('hidden');
-
-            // Memory Management: Delete C++ objects to prevent memory leaks
-            distVec.delete();
-            flowVec.delete();
-            resultVec.delete();
-        };
+        }
     </script>
 </body>
 </html>
