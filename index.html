@@ -2,45 +2,83 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>QAP Solver</title>
+    <title>Visual QAP Solver</title>
     <style>
-        body { font-family: sans-serif; max-width: 900px; margin: 20px auto; padding: 0 10px; }
-        .matrix-container { overflow-x: auto; margin-bottom: 20px; max-height: 350px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; }
+        body { font-family: sans-serif; max-width: 950px; margin: 20px auto; padding: 0 10px; }
+        .canvas-box { 
+            position: relative; 
+            width: 100%; 
+            height: 380px; 
+            border: 2px dashed #666; 
+            background: #f9f9f9; 
+            border-radius: 8px;
+            overflow: hidden; 
+            margin-bottom: 20px; 
+            touch-action: none;
+        }
+        .node {
+            position: absolute;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #007bff;
+            color: white;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            user-select: none;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: background 0.2s;
+        }
+        .node:active { cursor: grabbing; background: #0056b3; }
+        .matrix-container { overflow-x: auto; margin-bottom: 20px; max-height: 250px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; }
         table { border-collapse: collapse; }
         td { padding: 2px; }
-        input[type="number"] { width: 50px; padding: 4px; font-size: 14px; text-align: center; }
+        input[type="number"] { width: 48px; padding: 4px; font-size: 13px; text-align: center; }
+        input.readonly-dist { background-color: #f0f0f0; border: 1px solid #ccc; }
         .hidden { display: none; }
-        button { padding: 10px 15px; font-size: 16px; cursor: pointer; margin-bottom: 20px; }
+        button { padding: 10px 15px; font-size: 15px; cursor: pointer; margin-bottom: 20px; }
         #resultBox { padding: 15px; background: #eef; border-radius: 5px; margin-top: 20px; }
+        .instruction { font-size: 14px; color: #555; margin-bottom: 8px; }
     </style>
 </head>
 <body>
 
-    <h1>Quadratic Assignment Problem Solver</h1>
+    <h1>Visual Quadratic Assignment Problem Solver</h1>
     
-    <label for="nSize">Number of Assignments (N, max 16):</label>
-    <input type="number" id="nSize" min="2" max="16" value="4">
-    <button onclick="generateMatrices()">Create Matrices</button>
+    <label for="nSize">Number of Locations (N, max 16):</label>
+    <input type="number" id="nSize" min="2" max="16" value="5">
+    <button onclick="generateWorkspace()">Generate Setup</button>
 
     <div id="solverSection" class="hidden">
-        <h3>Distance Matrix</h3>
+        <h3>1. Drag & Drop Locations (Auto-calculates Distances)</h3>
+        <p class="instruction">Drag the numbered nodes around the area below. Distances are computed as Euclidean distance $\lfloor\sqrt{(x_1-x_2)^2 + (y_1-y_2)^2}\rceil$.</p>
+        <div id="canvasBox" class="canvas-box"></div>
+
+        <h3>2. Computed Distance Matrix (Read-only)</h3>
         <div class="matrix-container" id="distContainer"></div>
 
-        <h3>Flow Matrix</h3>
+        <h3>3. Flow Matrix (User Input)</h3>
         <div class="matrix-container" id="flowContainer"></div>
 
         <button id="solveBtn" onclick="runSolver()">Solve QAP</button>
         
         <div id="resultBox" class="hidden">
-            <strong>Optimal Assignment:</strong> <span id="resultAssignment"></span><br><br>
+            <strong>Optimal Assignment (Location ➔ Facility):</strong> 
+            <div id="resultAssignment" style="margin-top: 8px; font-size: 16px;"></div><br>
             <strong>Total Cost:</strong> <span id="resultCost"></span>
         </div>
     </div>
 
     <script>
         let currentN = 0;
+        let nodes = [];
+        let selectedNode = null;
+        let dragOffset = { x: 0, y: 0 };
 
-        function generateMatrices() {
+        function generateWorkspace() {
             const nInput = document.getElementById('nSize').value;
             currentN = parseInt(nInput);
             
@@ -49,25 +87,118 @@
                 return;
             }
 
-            document.getElementById('distContainer').innerHTML = buildTableHTML('dist', currentN);
-            document.getElementById('flowContainer').innerHTML = buildTableHTML('flow', currentN);
+            // Build Distance Table shell (Read-only) and Flow Table (Editable)
+            document.getElementById('distContainer').innerHTML = buildTableHTML('dist', currentN, true);
+            document.getElementById('flowContainer').innerHTML = buildTableHTML('flow', currentN, false);
             
+            initInteractiveNodes(currentN);
+
             document.getElementById('solverSection').classList.remove('hidden');
             document.getElementById('resultBox').classList.add('hidden');
         }
 
-        function buildTableHTML(prefix, n) {
+        function buildTableHTML(prefix, n, isReadOnly) {
             let html = '<table>';
             for (let i = 0; i < n; i++) {
                 html += '<tr>';
                 for (let j = 0; j < n; j++) {
                     const defaultVal = (i === j) ? 0 : 1; 
-                    html += `<td><input type="number" id="${prefix}_${i}_${j}" value="${defaultVal}"></td>`;
+                    const readOnlyAttr = isReadOnly ? 'readonly class="readonly-dist"' : '';
+                    html += `<td><input type="number" id="${prefix}_${i}_${j}" value="${defaultVal}" ${readOnlyAttr}></td>`;
                 }
                 html += '</tr>';
             }
             html += '</table>';
             return html;
+        }
+
+        // ==========================================
+        // 2D Interactive Drag & Drop Node System
+        // ==========================================
+
+        function initInteractiveNodes(n) {
+            const box = document.getElementById('canvasBox');
+            box.innerHTML = '';
+            nodes = [];
+
+            const rect = box.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            const radius = Math.min(centerX, centerY) - 50;
+
+            // Arrange nodes evenly in a circle initially
+            for (let i = 0; i < n; i++) {
+                const angle = (2 * Math.PI * i) / n;
+                const x = Math.round(centerX + radius * Math.cos(angle));
+                const y = Math.round(centerY + radius * Math.sin(angle));
+                
+                createNodeElement(i, x, y, box);
+            }
+
+            updateDistanceMatrix();
+        }
+
+        function createNodeElement(index, x, y, container) {
+            const el = document.createElement('div');
+            el.className = 'node';
+            el.innerText = index;
+            el.style.left = (x - 18) + 'px';
+            el.style.top = (y - 18) + 'px';
+
+            const nodeObj = { id: index, x: x, y: y, el: el };
+            nodes.push(nodeObj);
+
+            el.addEventListener('pointerdown', (e) => {
+                selectedNode = nodeObj;
+                const boxRect = container.getBoundingClientRect();
+                dragOffset.x = e.clientX - boxRect.left - selectedNode.x;
+                dragOffset.y = e.clientY - boxRect.top - selectedNode.y;
+                el.setPointerCapture(e.pointerId);
+                e.stopPropagation();
+            });
+
+            el.addEventListener('pointermove', (e) => {
+                if (selectedNode !== nodeObj) return;
+                const boxRect = container.getBoundingClientRect();
+                
+                let posX = e.clientX - boxRect.left - dragOffset.x;
+                let posY = e.clientY - boxRect.top - dragOffset.y;
+
+                // Clamp node inside bounding box
+                posX = Math.max(18, Math.min(boxRect.width - 18, posX));
+                posY = Math.max(18, Math.min(boxRect.height - 18, posY));
+
+                selectedNode.x = Math.round(posX);
+                selectedNode.y = Math.round(posY);
+
+                el.style.left = (selectedNode.x - 18) + 'px';
+                el.style.top = (selectedNode.y - 18) + 'px';
+
+                updateDistanceMatrix();
+            });
+
+            el.addEventListener('pointerup', (e) => {
+                if (selectedNode === nodeObj) {
+                    el.releasePointerCapture(e.pointerId);
+                    selectedNode = null;
+                }
+            });
+
+            container.appendChild(el);
+        }
+
+        function updateDistanceMatrix() {
+            const n = nodes.length;
+            for (let i = 0; i < n; i++) {
+                for (let j = 0; j < n; j++) {
+                    const dx = nodes[i].x - nodes[j].x;
+                    const dy = nodes[i].y - nodes[j].y;
+                    const dist = Math.round(Math.hypot(dx, dy));
+                    
+                    const cell = document.getElementById(`dist_${i}_${j}`);
+                    if (cell) cell.value = dist;
+                }
+            }
         }
 
         function getFlattenedMatrix(prefix, n) {
@@ -82,7 +213,7 @@
         }
 
         // ==========================================
-        // JS QAP Heuristic Solver (GRASP + 2-Opt + SA)
+        // QAP Solver Engine (GRASP + 2-Opt + SA)
         // ==========================================
 
         function calculateCost(n, distances, flows, assignment) {
@@ -95,7 +226,6 @@
             return cost;
         }
 
-        // O(N) cost difference when swapping elements at index u and v
         function calculateDelta(n, distances, flows, assignment, u, v) {
             let delta = 0;
             for (let i = 0; i < n; i++) {
@@ -132,16 +262,13 @@
         }
 
         function solveQAP(n, distances, flows) {
-            // Initial assignment [0, 1, ..., n-1]
             let bestAssignment = Array.from({length: n}, (_, i) => i);
             let bestCost = calculateCost(n, distances, flows, bestAssignment);
 
-            // Phase 1: GRASP with 2-opt
+            // Phase 1: GRASP
             const graspIterations = 50;
             for (let iter = 0; iter < graspIterations; iter++) {
                 let currentAssignment = [...bestAssignment];
-                
-                // Shuffle array (Randomized Greedy Construction)
                 for (let i = currentAssignment.length - 1; i > 0; i--) {
                     const j = Math.floor(Math.random() * (i + 1));
                     [currentAssignment[i], currentAssignment[j]] = [currentAssignment[j], currentAssignment[i]];
@@ -167,9 +294,7 @@
             while (temperature > absoluteTemperature) {
                 let u = Math.floor(Math.random() * n);
                 let v = Math.floor(Math.random() * n);
-                while (u === v) {
-                    v = Math.floor(Math.random() * n);
-                }
+                while (u === v) { v = Math.floor(Math.random() * n); }
 
                 let delta = calculateDelta(n, distances, flows, currentAssignment, u, v);
 
@@ -196,7 +321,11 @@
 
             const result = solveQAP(currentN, distArr, flowArr);
 
-            document.getElementById('resultAssignment').innerText = result.assignment.join('  ➔  ');
+            let formattedMapping = result.assignment.map((facility, location) => 
+                `Loc ${location} ➔ Facility ${facility}`
+            ).join(' | ');
+
+            document.getElementById('resultAssignment').innerText = formattedMapping;
             document.getElementById('resultCost').innerText = result.cost;
             document.getElementById('resultBox').classList.remove('hidden');
         }
