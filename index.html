@@ -2,9 +2,25 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Visual QAP Solver</title>
+    <title>Visual QAP Solver - Dual Mode</title>
     <style>
         body { font-family: sans-serif; max-width: 950px; margin: 20px auto; padding: 0 10px; }
+        
+        .control-panel {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 15px;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            margin-bottom: 20px;
+        }
+        .control-group { display: flex; flex-direction: column; gap: 4px; }
+        .control-group label { font-size: 13px; font-weight: bold; color: #333; }
+        .control-group input, .control-group select { padding: 6px 10px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; }
+
         .canvas-box { 
             position: relative; 
             width: 100%; 
@@ -16,10 +32,8 @@
             margin-bottom: 20px; 
             touch-action: none;
         }
-        .solution-box {
-            border: 2px solid #28a745;
-            background: #f4fff6;
-        }
+        
+        /* Node Styles */
         .node {
             position: absolute;
             width: 36px;
@@ -42,7 +56,6 @@
             position: absolute;
             padding: 6px 12px;
             border-radius: 20px;
-            background: #28a745;
             color: white;
             font-weight: bold;
             text-align: center;
@@ -52,6 +65,14 @@
             user-select: none;
             pointer-events: none;
         }
+        .node-min { background: #28a745; }
+        .node-max { background: #dc3545; }
+
+        .solution-min { border: 2px solid #28a745; background: #f4fff6; }
+        .solution-max { border: 2px solid #dc3545; background: #fff5f5; }
+
+        .result-min { padding: 20px; background: #eefdf2; border: 1px solid #c3e6cb; border-radius: 5px; margin-top: 20px; }
+        .result-max { padding: 20px; background: #fff0f0; border: 1px solid #f5c6cb; border-radius: 5px; margin-top: 20px; }
 
         /* Facility Selector Styles */
         .facility-grid {
@@ -77,8 +98,12 @@
         input.readonly-dist { background-color: #f0f0f0; border: 1px solid #ccc; }
         
         .hidden { display: none; }
-        button { padding: 10px 15px; font-size: 15px; cursor: pointer; margin-bottom: 20px; }
-        #resultBox { padding: 20px; background: #eef; border-radius: 5px; margin-top: 20px; }
+        button { padding: 10px 18px; font-size: 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        .gen-btn { background-color: #007bff; color: white; border: none; }
+        .gen-btn:hover { background-color: #0056b3; }
+        .solve-btn { background-color: #6f42c1; color: white; border: none; margin-bottom: 20px; }
+        .solve-btn:hover { background-color: #593196; }
+
         .instruction { font-size: 14px; color: #555; margin-bottom: 8px; }
         .mapping-list { margin-top: 10px; font-size: 15px; line-height: 1.6; margin-bottom: 15px; }
     </style>
@@ -87,9 +112,22 @@
 
     <h1>Visual Quadratic Assignment Problem Solver</h1>
     
-    <label for="nSize">Number of Locations & Facilities (N, max 16):</label>
-    <input type="number" id="nSize" min="2" max="16" value="5">
-    <button onclick="generateWorkspace()">Generate Setup</button>
+    <div class="control-panel">
+        <div class="control-group">
+            <label for="nSize">Locations / Facilities (N, max 16):</label>
+            <input type="number" id="nSize" min="2" max="16" value="5">
+        </div>
+        
+        <div class="control-group">
+            <label for="solveMode">Optimization Objective:</label>
+            <select id="solveMode">
+                <option value="min" selected>🟢 Most Efficient (Minimize Cost)</option>
+                <option value="max">🔴 Least Efficient (Maximize Cost)</option>
+            </select>
+        </div>
+
+        <button class="gen-btn" onclick="generateWorkspace()">Generate Setup</button>
+    </div>
 
     <div id="solverSection" class="hidden">
         
@@ -107,18 +145,18 @@
         <h3>4. Flow Matrix (User Input)</h3>
         <div class="matrix-container" id="flowContainer"></div>
 
-        <button id="solveBtn" onclick="runSolver()">Solve QAP</button>
+        <button id="solveBtn" class="solve-btn" onclick="runSolver()">Calculate Optimal Assignment</button>
         
         <div id="resultBox" class="hidden">
-            <h2>Optimal Solution Results</h2>
-            <strong>Total Minimum Cost:</strong> <span id="resultCost" style="font-size: 18px; color: #007bff; font-weight: bold;"></span><br><br>
+            <h2 id="resultTitle">Solution Results</h2>
+            <strong>Total Cost:</strong> <span id="resultCost" style="font-size: 20px; font-weight: bold;"></span><br><br>
             
             <strong>Facility Mapping List:</strong> 
             <div id="resultAssignment" class="mapping-list"></div>
 
             <h3>Visual Assignment Map</h3>
             <p class="instruction">Map of assigned facilities placed at their corresponding 2D spatial locations:</p>
-            <div id="solutionCanvasBox" class="canvas-box solution-box"></div>
+            <div id="solutionCanvasBox" class="canvas-box"></div>
         </div>
     </div>
 
@@ -144,24 +182,14 @@
                 return;
             }
 
-            // Unhide section FIRST so the browser calculates accurate canvas box dimensions
             document.getElementById('solverSection').classList.remove('hidden');
             document.getElementById('resultBox').classList.add('hidden');
 
-            // 1. Build Facility Selectors
             buildFacilitySelectors(currentN);
-
-            // 2. Build Matrices with Header Labels
             document.getElementById('distContainer').innerHTML = buildDistTableHTML(currentN);
             document.getElementById('flowContainer').innerHTML = buildFlowTableHTML(currentN);
-            
-            // 3. Initialize Interactive Canvas Nodes
             initInteractiveNodes(currentN);
         }
-
-        // ==========================================
-        // Facility Selector UI Generation
-        // ==========================================
 
         function buildFacilitySelectors(n) {
             const grid = document.getElementById('facilityGrid');
@@ -213,10 +241,6 @@
             if (rowHdr) rowHdr.innerText = newName;
         }
 
-        // ==========================================
-        // Matrix HTML Builders (with Row/Col Headers)
-        // ==========================================
-
         function buildDistTableHTML(n) {
             let html = '<table>';
             html += '<tr><th></th>';
@@ -257,10 +281,6 @@
             html += '</table>';
             return html;
         }
-
-        // ==========================================
-        // 2D Interactive Drag & Drop Node System
-        // ==========================================
 
         function initInteractiveNodes(n) {
             const box = document.getElementById('canvasBox');
@@ -359,9 +379,9 @@
             return arr;
         }
 
-        // ==========================================
-        // QAP Solver Engine (GRASP + 2-Opt + SA)
-        // ==========================================
+        // =========================================================================
+        // Configurable Configurable QAP Solver Engine (Minimization / Maximization)
+        // =========================================================================
 
         function calculateCost(n, distances, flows, assignment) {
             let cost = 0;
@@ -388,14 +408,22 @@
             return delta;
         }
 
-        function localSearch2Opt(n, distances, flows, assignment, currentCost) {
+        function isBetter(a, b, mode) {
+            return mode === 'min' ? a < b : a > b;
+        }
+
+        function isDeltaBetter(delta, mode) {
+            return mode === 'min' ? delta < 0 : delta > 0;
+        }
+
+        function localSearch2Opt(n, distances, flows, assignment, currentCost, mode) {
             let improvement = true;
             while (improvement) {
                 improvement = false;
                 for (let u = 0; u < n - 1; u++) {
                     for (let v = u + 1; v < n; v++) {
                         let delta = calculateDelta(n, distances, flows, assignment, u, v);
-                        if (delta < 0) {
+                        if (isDeltaBetter(delta, mode)) {
                             let temp = assignment[u];
                             assignment[u] = assignment[v];
                             assignment[v] = temp;
@@ -408,7 +436,7 @@
             return currentCost;
         }
 
-        function solveQAP(n, distances, flows) {
+        function solveQAP(n, distances, flows, mode) {
             let bestAssignment = Array.from({length: n}, (_, i) => i);
             let bestCost = calculateCost(n, distances, flows, bestAssignment);
 
@@ -422,9 +450,9 @@
                 }
 
                 let currentCost = calculateCost(n, distances, flows, currentAssignment);
-                currentCost = localSearch2Opt(n, distances, flows, currentAssignment, currentCost);
+                currentCost = localSearch2Opt(n, distances, flows, currentAssignment, currentCost, mode);
 
-                if (currentCost < bestCost) {
+                if (isBetter(currentCost, bestCost, mode)) {
                     bestCost = currentCost;
                     bestAssignment = [...currentAssignment];
                 }
@@ -445,13 +473,20 @@
 
                 let delta = calculateDelta(n, distances, flows, currentAssignment, u, v);
 
-                if (delta < 0 || Math.exp(-delta / temperature) > Math.random()) {
+                let accept = false;
+                if (mode === 'min') {
+                    accept = (delta < 0) || (Math.exp(-delta / temperature) > Math.random());
+                } else {
+                    accept = (delta > 0) || (Math.exp(delta / temperature) > Math.random());
+                }
+
+                if (accept) {
                     let temp = currentAssignment[u];
                     currentAssignment[u] = currentAssignment[v];
                     currentAssignment[v] = temp;
                     currentCost += delta;
 
-                    if (currentCost < bestCost) {
+                    if (isBetter(currentCost, bestCost, mode)) {
                         bestCost = currentCost;
                         bestAssignment = [...currentAssignment];
                     }
@@ -462,16 +497,18 @@
             return { assignment: bestAssignment, cost: bestCost };
         }
 
-        function renderSolutionMap(assignment, facNames) {
+        function renderSolutionMap(assignment, facNames, mode) {
             const solBox = document.getElementById('solutionCanvasBox');
             solBox.innerHTML = '';
+
+            const nodeClass = mode === 'min' ? 'solution-node node-min' : 'solution-node node-max';
 
             nodes.forEach((node, locationIdx) => {
                 const assignedFacIdx = assignment[locationIdx];
                 const facilityName = facNames[assignedFacIdx];
 
                 const el = document.createElement('div');
-                el.className = 'solution-node';
+                el.className = nodeClass;
                 el.style.left = node.x + 'px';
                 el.style.top = node.y + 'px';
                 
@@ -485,23 +522,40 @@
         }
 
         function runSolver() {
+            const mode = document.getElementById('solveMode').value;
             const distArr = getFlattenedMatrix('dist', currentN);
             const flowArr = getFlattenedMatrix('flow', currentN);
             const facNames = getFacilityNames();
 
-            const result = solveQAP(currentN, distArr, flowArr);
+            const result = solveQAP(currentN, distArr, flowArr, mode);
+
+            const resultBox = document.getElementById('resultBox');
+            const solCanvas = document.getElementById('solutionCanvasBox');
+            const titleEl = document.getElementById('resultTitle');
+            const costEl = document.getElementById('resultCost');
+
+            if (mode === 'min') {
+                resultBox.className = 'result-min';
+                solCanvas.className = 'canvas-box solution-min';
+                titleEl.innerText = '🟢 Most Efficient (Optimal) Solution';
+                costEl.style.color = '#28a745';
+            } else {
+                resultBox.className = 'result-max';
+                solCanvas.className = 'canvas-box solution-max';
+                titleEl.innerText = '🔴 Least Efficient (Worst-Case) Solution';
+                costEl.style.color = '#dc3545';
+            }
 
             let formattedMapping = result.assignment.map((facilityIdx, locationIdx) => 
                 `• <strong>Location ${locationIdx}</strong> ➔ ${facNames[facilityIdx]}`
             ).join('<br>');
 
             document.getElementById('resultAssignment').innerHTML = formattedMapping;
-            document.getElementById('resultCost').innerText = result.cost;
+            costEl.innerText = result.cost;
             
-            // Render the final 2D solution graphic
-            renderSolutionMap(result.assignment, facNames);
+            renderSolutionMap(result.assignment, facNames, mode);
 
-            document.getElementById('resultBox').classList.remove('hidden');
+            resultBox.classList.remove('hidden');
         }
     </script>
 </body>
