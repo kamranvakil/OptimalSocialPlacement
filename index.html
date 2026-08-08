@@ -16,6 +16,10 @@
             margin-bottom: 20px; 
             touch-action: none;
         }
+        .solution-box {
+            border: 2px solid #28a745;
+            background: #f4fff6;
+        }
         .node {
             position: absolute;
             width: 36px;
@@ -34,6 +38,21 @@
         }
         .node:active { cursor: grabbing; background: #0056b3; }
         
+        .solution-node {
+            position: absolute;
+            padding: 6px 12px;
+            border-radius: 20px;
+            background: #28a745;
+            color: white;
+            font-weight: bold;
+            text-align: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+            transform: translate(-50%, -50%);
+            white-space: nowrap;
+            user-select: none;
+            pointer-events: none;
+        }
+
         /* Facility Selector Styles */
         .facility-grid {
             display: grid;
@@ -59,9 +78,9 @@
         
         .hidden { display: none; }
         button { padding: 10px 15px; font-size: 15px; cursor: pointer; margin-bottom: 20px; }
-        #resultBox { padding: 15px; background: #eef; border-radius: 5px; margin-top: 20px; }
+        #resultBox { padding: 20px; background: #eef; border-radius: 5px; margin-top: 20px; }
         .instruction { font-size: 14px; color: #555; margin-bottom: 8px; }
-        .mapping-list { margin-top: 10px; font-size: 15px; line-height: 1.6; }
+        .mapping-list { margin-top: 10px; font-size: 15px; line-height: 1.6; margin-bottom: 15px; }
     </style>
 </head>
 <body>
@@ -91,9 +110,15 @@
         <button id="solveBtn" onclick="runSolver()">Solve QAP</button>
         
         <div id="resultBox" class="hidden">
-            <strong>Optimal Assignment:</strong> 
-            <div id="resultAssignment" class="mapping-list"></div><br>
-            <strong>Total Cost:</strong> <span id="resultCost"></span>
+            <h2>Optimal Solution Results</h2>
+            <strong>Total Minimum Cost:</strong> <span id="resultCost" style="font-size: 18px; color: #007bff; font-weight: bold;"></span><br><br>
+            
+            <strong>Facility Mapping List:</strong> 
+            <div id="resultAssignment" class="mapping-list"></div>
+
+            <h3>Visual Assignment Map</h3>
+            <p class="instruction">Map of assigned facilities placed at their corresponding 2D spatial locations:</p>
+            <div id="solutionCanvasBox" class="canvas-box solution-box"></div>
         </div>
     </div>
 
@@ -156,7 +181,6 @@
                     const opt = document.createElement('option');
                     opt.value = name;
                     opt.innerText = name;
-                    // Default each selector to a unique distinct name from the presets
                     if (idx === (i % presetFacilityNames.length)) {
                         opt.selected = true;
                     }
@@ -195,14 +219,12 @@
 
         function buildDistTableHTML(n) {
             let html = '<table>';
-            // Column Headers
             html += '<tr><th></th>';
             for (let j = 0; j < n; j++) {
                 html += `<th>Loc ${j}</th>`;
             }
             html += '</tr>';
 
-            // Data Rows
             for (let i = 0; i < n; i++) {
                 html += `<tr><th>Loc ${i}</th>`;
                 for (let j = 0; j < n; j++) {
@@ -218,14 +240,12 @@
         function buildFlowTableHTML(n) {
             const names = getFacilityNames();
             let html = '<table>';
-            // Column Headers
             html += '<tr><th></th>';
             for (let j = 0; j < n; j++) {
                 html += `<th id="flow_col_hdr_${j}">${names[j]}</th>`;
             }
             html += '</tr>';
 
-            // Data Rows
             for (let i = 0; i < n; i++) {
                 html += `<tr><th id="flow_row_hdr_${i}">${names[i]}</th>`;
                 for (let j = 0; j < n; j++) {
@@ -442,6 +462,28 @@
             return { assignment: bestAssignment, cost: bestCost };
         }
 
+        function renderSolutionMap(assignment, facNames) {
+            const solBox = document.getElementById('solutionCanvasBox');
+            solBox.innerHTML = '';
+
+            nodes.forEach((node, locationIdx) => {
+                const assignedFacIdx = assignment[locationIdx];
+                const facilityName = facNames[assignedFacIdx];
+
+                const el = document.createElement('div');
+                el.className = 'solution-node';
+                el.style.left = node.x + 'px';
+                el.style.top = node.y + 'px';
+                
+                el.innerHTML = `
+                    <div style="font-size: 10px; opacity: 0.85;">LOCATION ${locationIdx}</div>
+                    <div style="font-size: 13px;">${facilityName}</div>
+                `;
+
+                solBox.appendChild(el);
+            });
+        }
+
         function runSolver() {
             const distArr = getFlattenedMatrix('dist', currentN);
             const flowArr = getFlattenedMatrix('flow', currentN);
@@ -455,6 +497,10 @@
 
             document.getElementById('resultAssignment').innerHTML = formattedMapping;
             document.getElementById('resultCost').innerText = result.cost;
+            
+            // Render the final 2D solution graphic
+            renderSolutionMap(result.assignment, facNames);
+
             document.getElementById('resultBox').classList.remove('hidden');
         }
     </script>
