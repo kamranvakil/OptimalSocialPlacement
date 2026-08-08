@@ -33,41 +33,66 @@
             transition: background 0.2s;
         }
         .node:active { cursor: grabbing; background: #0056b3; }
-        .matrix-container { overflow-x: auto; margin-bottom: 20px; max-height: 250px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; }
+        
+        /* Facility Selector Styles */
+        .facility-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 12px;
+            background: #f4f4f9;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            margin-bottom: 20px;
+        }
+        .facility-item { display: flex; flex-direction: column; gap: 4px; }
+        .facility-item label { font-size: 13px; font-weight: bold; color: #333; }
+        .facility-item select { padding: 6px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; }
+
+        /* Table Matrix Styles */
+        .matrix-container { overflow-x: auto; margin-bottom: 20px; max-height: 280px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; }
         table { border-collapse: collapse; }
+        th { background: #e9ecef; padding: 6px 8px; font-size: 12px; border: 1px solid #ccc; text-align: center; white-space: nowrap; }
         td { padding: 2px; }
-        input[type="number"] { width: 48px; padding: 4px; font-size: 13px; text-align: center; }
+        input[type="number"] { width: 55px; padding: 4px; font-size: 13px; text-align: center; }
         input.readonly-dist { background-color: #f0f0f0; border: 1px solid #ccc; }
+        
         .hidden { display: none; }
         button { padding: 10px 15px; font-size: 15px; cursor: pointer; margin-bottom: 20px; }
         #resultBox { padding: 15px; background: #eef; border-radius: 5px; margin-top: 20px; }
         .instruction { font-size: 14px; color: #555; margin-bottom: 8px; }
+        .mapping-list { margin-top: 10px; font-size: 15px; line-height: 1.6; }
     </style>
 </head>
 <body>
 
     <h1>Visual Quadratic Assignment Problem Solver</h1>
     
-    <label for="nSize">Number of Locations (N, max 16):</label>
+    <label for="nSize">Number of Locations & Facilities (N, max 16):</label>
     <input type="number" id="nSize" min="2" max="16" value="5">
     <button onclick="generateWorkspace()">Generate Setup</button>
 
     <div id="solverSection" class="hidden">
-        <h3>1. Drag & Drop Locations (Auto-calculates Distances)</h3>
-        <p class="instruction">Drag the numbered nodes around the area below. Distances update in real time as Euclidean distance.</p>
+        
+        <h3>1. Assign Facility Names</h3>
+        <p class="instruction">Choose names for each facility. These names update the Flow Matrix labels automatically.</p>
+        <div id="facilityGrid" class="facility-grid"></div>
+
+        <h3>2. Drag & Drop Locations (Auto-calculates Distances)</h3>
+        <p class="instruction">Drag the numbered location nodes around the area below. Distances update in real time as Euclidean distance.</p>
         <div id="canvasBox" class="canvas-box"></div>
 
-        <h3>2. Computed Distance Matrix (Read-only)</h3>
+        <h3>3. Computed Distance Matrix (Read-only)</h3>
         <div class="matrix-container" id="distContainer"></div>
 
-        <h3>3. Flow Matrix (User Input)</h3>
+        <h3>4. Flow Matrix (User Input)</h3>
         <div class="matrix-container" id="flowContainer"></div>
 
         <button id="solveBtn" onclick="runSolver()">Solve QAP</button>
         
         <div id="resultBox" class="hidden">
-            <strong>Optimal Assignment (Location ➔ Facility):</strong> 
-            <div id="resultAssignment" style="margin-top: 8px; font-size: 16px;"></div><br>
+            <strong>Optimal Assignment:</strong> 
+            <div id="resultAssignment" class="mapping-list"></div><br>
             <strong>Total Cost:</strong> <span id="resultCost"></span>
         </div>
     </div>
@@ -77,6 +102,13 @@
         let nodes = [];
         let selectedNode = null;
         let dragOffset = { x: 0, y: 0 };
+
+        const presetFacilityNames = [
+            "Warehouse", "Assembly Line", "Office / HQ", "Loading Dock",
+            "Storage Room", "Cafeteria", "Data Center", "Restroom",
+            "Break Room", "Quality Control", "Packaging", "Shipping",
+            "Receiving", "Maintenance", "R&D Lab", "Executive Suite"
+        ];
 
         function generateWorkspace() {
             const nInput = document.getElementById('nSize').value;
@@ -91,22 +123,114 @@
             document.getElementById('solverSection').classList.remove('hidden');
             document.getElementById('resultBox').classList.add('hidden');
 
-            // Build Distance Table (Read-only) and Flow Table (Editable)
-            document.getElementById('distContainer').innerHTML = buildTableHTML('dist', currentN, true);
-            document.getElementById('flowContainer').innerHTML = buildTableHTML('flow', currentN, false);
+            // 1. Build Facility Selectors
+            buildFacilitySelectors(currentN);
+
+            // 2. Build Matrices with Header Labels
+            document.getElementById('distContainer').innerHTML = buildDistTableHTML(currentN);
+            document.getElementById('flowContainer').innerHTML = buildFlowTableHTML(currentN);
             
-            // Initialize node positions centered inside the canvas box
+            // 3. Initialize Interactive Canvas Nodes
             initInteractiveNodes(currentN);
         }
 
-        function buildTableHTML(prefix, n, isReadOnly) {
-            let html = '<table>';
+        // ==========================================
+        // Facility Selector UI Generation
+        // ==========================================
+
+        function buildFacilitySelectors(n) {
+            const grid = document.getElementById('facilityGrid');
+            grid.innerHTML = '';
+
             for (let i = 0; i < n; i++) {
-                html += '<tr>';
+                const item = document.createElement('div');
+                item.className = 'facility-item';
+
+                const label = document.createElement('label');
+                label.innerText = `Facility ${i} Name:`;
+
+                const select = document.createElement('select');
+                select.id = `facSelect_${i}`;
+
+                presetFacilityNames.forEach((name, idx) => {
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    opt.innerText = name;
+                    // Default each selector to a unique distinct name from the presets
+                    if (idx === (i % presetFacilityNames.length)) {
+                        opt.selected = true;
+                    }
+                    select.appendChild(opt);
+                });
+
+                select.addEventListener('change', () => onFacilityNameChange(i));
+
+                item.appendChild(label);
+                item.appendChild(select);
+                grid.appendChild(item);
+            }
+        }
+
+        function getFacilityNames() {
+            let names = [];
+            for (let i = 0; i < currentN; i++) {
+                const sel = document.getElementById(`facSelect_${i}`);
+                names.push(sel ? sel.value : `Facility ${i}`);
+            }
+            return names;
+        }
+
+        function onFacilityNameChange(index) {
+            const newName = document.getElementById(`facSelect_${index}`).value;
+            const colHdr = document.getElementById(`flow_col_hdr_${index}`);
+            const rowHdr = document.getElementById(`flow_row_hdr_${index}`);
+            
+            if (colHdr) colHdr.innerText = newName;
+            if (rowHdr) rowHdr.innerText = newName;
+        }
+
+        // ==========================================
+        // Matrix HTML Builders (with Row/Col Headers)
+        // ==========================================
+
+        function buildDistTableHTML(n) {
+            let html = '<table>';
+            // Column Headers
+            html += '<tr><th></th>';
+            for (let j = 0; j < n; j++) {
+                html += `<th>Loc ${j}</th>`;
+            }
+            html += '</tr>';
+
+            // Data Rows
+            for (let i = 0; i < n; i++) {
+                html += `<tr><th>Loc ${i}</th>`;
                 for (let j = 0; j < n; j++) {
-                    const defaultVal = (i === j) ? 0 : 1; 
-                    const readOnlyAttr = isReadOnly ? 'readonly class="readonly-dist"' : '';
-                    html += `<td><input type="number" id="${prefix}_${i}_${j}" value="${defaultVal}" ${readOnlyAttr}></td>`;
+                    const defaultVal = (i === j) ? 0 : 1;
+                    html += `<td><input type="number" id="dist_${i}_${j}" value="${defaultVal}" readonly class="readonly-dist"></td>`;
+                }
+                html += '</tr>';
+            }
+            html += '</table>';
+            return html;
+        }
+
+        function buildFlowTableHTML(n) {
+            const names = getFacilityNames();
+            let html = '<table>';
+            // Column Headers
+            html += '<tr><th></th>';
+            for (let j = 0; j < n; j++) {
+                html += `<th id="flow_col_hdr_${j}">${names[j]}</th>`;
+            }
+            html += '</tr>';
+
+            // Data Rows
+            for (let i = 0; i < n; i++) {
+                html += `<tr><th id="flow_row_hdr_${i}">${names[i]}</th>`;
+                for (let j = 0; j < n; j++) {
+                    const defaultVal = (i === j) ? 0 : 1;
+                    html += `<td><input type="number" id="flow_${i}_${j}" value="${defaultVal}"></td>`;
                 }
                 html += '</tr>';
             }
@@ -123,7 +247,6 @@
             box.innerHTML = '';
             nodes = [];
 
-            // Read computed box dimensions safely
             const rect = box.getBoundingClientRect();
             const width = rect.width || box.clientWidth || 800;
             const height = rect.height || box.clientHeight || 380;
@@ -132,7 +255,6 @@
             const centerY = height / 2;
             const radius = Math.min(centerX, centerY) - 50;
 
-            // Arrange nodes evenly in a centered circle
             for (let i = 0; i < n; i++) {
                 const angle = (2 * Math.PI * i) / n;
                 const x = Math.round(centerX + radius * Math.cos(angle));
@@ -170,7 +292,6 @@
                 let posX = e.clientX - boxRect.left - dragOffset.x;
                 let posY = e.clientY - boxRect.top - dragOffset.y;
 
-                // Clamp node inside bounding canvas box
                 posX = Math.max(18, Math.min(boxRect.width - 18, posX));
                 posY = Math.max(18, Math.min(boxRect.height - 18, posY));
 
@@ -324,14 +445,15 @@
         function runSolver() {
             const distArr = getFlattenedMatrix('dist', currentN);
             const flowArr = getFlattenedMatrix('flow', currentN);
+            const facNames = getFacilityNames();
 
             const result = solveQAP(currentN, distArr, flowArr);
 
-            let formattedMapping = result.assignment.map((facility, location) => 
-                `Loc ${location} ➔ Facility ${facility}`
-            ).join(' | ');
+            let formattedMapping = result.assignment.map((facilityIdx, locationIdx) => 
+                `• <strong>Location ${locationIdx}</strong> ➔ ${facNames[facilityIdx]}`
+            ).join('<br>');
 
-            document.getElementById('resultAssignment').innerText = formattedMapping;
+            document.getElementById('resultAssignment').innerHTML = formattedMapping;
             document.getElementById('resultCost').innerText = result.cost;
             document.getElementById('resultBox').classList.remove('hidden');
         }
