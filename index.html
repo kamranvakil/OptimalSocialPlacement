@@ -54,7 +54,7 @@
 
     <div id="solverSection" class="hidden">
         <h3>1. Drag & Drop Locations (Auto-calculates Distances)</h3>
-        <p class="instruction">Drag the numbered nodes around the area below. Distances are computed as Euclidean distance $\lfloor\sqrt{(x_1-x_2)^2 + (y_1-y_2)^2}\rceil$.</p>
+        <p class="instruction">Drag the numbered nodes around the area below. Distances update in real time as Euclidean distance.</p>
         <div id="canvasBox" class="canvas-box"></div>
 
         <h3>2. Computed Distance Matrix (Read-only)</h3>
@@ -87,14 +87,16 @@
                 return;
             }
 
-            // Build Distance Table shell (Read-only) and Flow Table (Editable)
+            // Unhide section FIRST so the browser calculates accurate canvas box dimensions
+            document.getElementById('solverSection').classList.remove('hidden');
+            document.getElementById('resultBox').classList.add('hidden');
+
+            // Build Distance Table (Read-only) and Flow Table (Editable)
             document.getElementById('distContainer').innerHTML = buildTableHTML('dist', currentN, true);
             document.getElementById('flowContainer').innerHTML = buildTableHTML('flow', currentN, false);
             
+            // Initialize node positions centered inside the canvas box
             initInteractiveNodes(currentN);
-
-            document.getElementById('solverSection').classList.remove('hidden');
-            document.getElementById('resultBox').classList.add('hidden');
         }
 
         function buildTableHTML(prefix, n, isReadOnly) {
@@ -121,12 +123,16 @@
             box.innerHTML = '';
             nodes = [];
 
+            // Read computed box dimensions safely
             const rect = box.getBoundingClientRect();
-            const centerX = rect.width / 2;
-            const centerY = rect.height / 2;
+            const width = rect.width || box.clientWidth || 800;
+            const height = rect.height || box.clientHeight || 380;
+
+            const centerX = width / 2;
+            const centerY = height / 2;
             const radius = Math.min(centerX, centerY) - 50;
 
-            // Arrange nodes evenly in a circle initially
+            // Arrange nodes evenly in a centered circle
             for (let i = 0; i < n; i++) {
                 const angle = (2 * Math.PI * i) / n;
                 const x = Math.round(centerX + radius * Math.cos(angle));
@@ -164,7 +170,7 @@
                 let posX = e.clientX - boxRect.left - dragOffset.x;
                 let posY = e.clientY - boxRect.top - dragOffset.y;
 
-                // Clamp node inside bounding box
+                // Clamp node inside bounding canvas box
                 posX = Math.max(18, Math.min(boxRect.width - 18, posX));
                 posY = Math.max(18, Math.min(boxRect.height - 18, posY));
 
