@@ -416,23 +416,25 @@
         function renderFlowForm() {
             const names = getFacilityNames();
             const turnName = names[currentFlowIndex];
-            
+    
             document.getElementById('flowTurnTitle').innerText = `Turn: ${turnName} (${currentFlowIndex + 1} of ${currentN})`;
-            
+    
+            // Reset preference to default
             const defaultRadio = document.querySelector('input[name="facPref"][value="efficiency"]');
             if(defaultRadio) defaultRadio.checked = true;
-            
+    
             const listContainer = document.getElementById('flowInputsList');
-            listContainer.innerHTML = '';
-
+            listContainer.innerHTML = ''; // Clear previous inputs
+    
+            // Generate a full grid of inputs for EVERY facility
             for (let j = 0; j < currentN; j++) {
                 const item = document.createElement('div');
                 item.className = 'facility-item';
-                
+        
                 const label = document.createElement('label');
                 label.id = `label_flow_${j}`;
                 label.innerText = `To ${names[j]}:`;
-                
+        
                 const input = document.createElement('input');
                 input.type = 'number';
                 input.id = `private_flow_${j}`;
@@ -440,13 +442,16 @@
                 input.max = "100";
                 input.inputMode = "numeric";
                 input.pattern = "[0-9]*";
-                
-                input.value = (currentFlowIndex === j) ? 0 : 1;
-                
+        
+                // Ensure only the "flow-to-self" input is read-only. All others must be editable.
                 if (currentFlowIndex === j) {
+                    input.value = 0;
                     input.readOnly = true;
                     input.style.backgroundColor = "#eee";
                     input.style.color = "#999";
+                } else {
+                    input.value = 1;
+                    input.readOnly = false; // Explicitly enforce that this can be changed
                 }
 
                 item.appendChild(label);
@@ -460,11 +465,12 @@
             } else {
                 btn.innerText = "Submit & Pass Device";
             }
-            
+    
             setTimeout(() => {
                 const firstInputId = currentFlowIndex === 0 ? `private_flow_1` : `private_flow_0`;
                 const firstInput = document.getElementById(firstInputId);
-                if(firstInput) firstInput.focus({ preventScroll: true });
+                // Included the preventScroll fix here as well so the screen doesn't jump
+                if(firstInput) firstInput.focus({ preventScroll: true }); 
             }, 100);
         }
 
