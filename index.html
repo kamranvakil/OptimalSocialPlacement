@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Visual QAP Solver - Dynamic N+1 System</title>
+    <title>Visual QAP Solver - Smart N+1 Flow</title>
     <style>
         body { font-family: sans-serif; max-width: 950px; margin: 20px auto; padding: 0 10px; }
         
@@ -33,7 +33,6 @@
             touch-action: none;
         }
         
-        /* Node Styles */
         .node {
             position: absolute;
             width: 36px;
@@ -71,7 +70,6 @@
 
         .result-box { padding: 20px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; margin-top: 20px; }
 
-        /* Facility Selector Styles */
         .facility-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -86,7 +84,6 @@
         .facility-item label { font-size: 13px; font-weight: bold; color: #333; }
         .facility-item input[type="text"], .facility-item input[type="number"] { padding: 6px 8px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; }
 
-        /* Table Matrix Styles */
         .matrix-container { overflow-x: auto; margin-bottom: 20px; max-height: 280px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; }
         table { border-collapse: collapse; }
         th { background: #e9ecef; padding: 6px 8px; font-size: 12px; border: 1px solid #ccc; text-align: center; white-space: nowrap; }
@@ -105,7 +102,6 @@
         .instruction { font-size: 14px; color: #555; margin-bottom: 8px; }
         .mapping-list { margin-top: 10px; font-size: 15px; line-height: 1.6; margin-bottom: 15px; }
 
-        /* Private Flow Box & Radio Buttons */
         .private-flow-box {
             background: #fffbe6;
             border: 2px solid #ffeeba;
@@ -210,7 +206,7 @@
                     </div>
                 </div>
 
-                <p class="instruction" style="color: #664d03;">Enter the amount of traffic/flow from your facility to the others (0-100). The system will automatically adjust your numbers based on your preference when submitted.</p>
+                <p class="instruction" style="color: #664d03;">Enter the amount of traffic/flow from your facility to the others (0-100).</p>
                 <div id="flowInputsList" class="facility-grid" style="background: white;"></div>
                 <button id="nextFlowBtn" class="gen-btn" style="background-color: #28a745; margin-top: 10px;" onclick="submitCurrentFlow()">Submit & Next</button>
             </div>
@@ -237,7 +233,6 @@
             <div id="resultAssignment" class="mapping-list"></div>
 
             <h3>Visual Assignment Map</h3>
-            <p class="instruction">Map of assigned facilities placed at their corresponding 2D spatial locations:</p>
             <div id="solutionCanvasBox" class="canvas-box"></div>
         </div>
     </div>
@@ -248,9 +243,11 @@
         let selectedNode = null;
         let dragOffset = { x: 0, y: 0 };
         
-        // Private Flow State
+        // Flow State Variables
         let currentFlowIndex = 0;
         let flowMatrixData = [];
+        let facilityPreferences = []; // New: Stores everyone's chosen preference
+        let isDynamicAddition = false; // New: Tracks if we are currently handling an N+1 addition
 
         const presetFacilityNames = [
             "Warehouse", "Assembly Line", "Office / HQ", "Loading Dock",
@@ -366,50 +363,47 @@
                 return;
             }
 
-            // 1. Update overall constraints
+            isDynamicAddition = true; // Turn on the flag to trigger symmetric reverse mapping
+
             currentN++;
             document.getElementById('nSize').value = currentN;
             const newIndex = currentN - 1;
 
-            // 2. Add Name Input dynamically without wiping existing ones
             const grid = document.getElementById('facilityGrid');
             addFacilityInputToGrid(newIndex, grid);
 
-            // 3. Add new location node to the canvas center
             const box = document.getElementById('canvasBox');
             const rect = box.getBoundingClientRect();
             const centerX = (rect.width || 800) / 2;
             const centerY = (rect.height || 380) / 2;
             createNodeElement(newIndex, Math.round(centerX), Math.round(centerY), box);
 
-            // 4. Rebuild the distance matrix HTML and populate data
             document.getElementById('distContainer').innerHTML = buildDistTableHTML(currentN);
             updateDistanceMatrix();
 
-            // 5. Expand Flow Matrix Data for existing entries 
             for (let i = 0; i < currentN - 1; i++) {
-                flowMatrixData[i].push(0); // Flow from existing to new defaults to 0
+                flowMatrixData[i].push(0); 
             }
-            // Push a fresh array for the new facility
             flowMatrixData.push(Array(currentN).fill(0));
 
-            // 6. Reset UI purely for this single new facility
             currentFlowIndex = newIndex;
             document.getElementById('privateFlowDone').classList.add('hidden');
             document.getElementById('privateFlowActive').classList.remove('hidden');
             document.getElementById('solveBtn').disabled = true;
-            document.getElementById('resultBox').classList.add('hidden'); // Hide old results
+            document.getElementById('resultBox').classList.add('hidden'); 
             
             renderFlowForm();
         }
 
         // ==========================================
-        // Private Flow Logic & Math Transformations
+        // Smart Two-Way Private Flow Logic
         // ==========================================
         
         function initPrivateFlow(n) {
             currentFlowIndex = 0;
             flowMatrixData = Array.from({length: n}, () => Array(n).fill(0));
+            facilityPreferences = []; // Reset stored preferences
+            isDynamicAddition = false;
             
             document.getElementById('privateFlowActive').classList.remove('hidden');
             document.getElementById('privateFlowDone').classList.add('hidden');
@@ -425,7 +419,6 @@
             
             document.getElementById('flowTurnTitle').innerText = `Turn: ${turnName} (${currentFlowIndex + 1} of ${currentN})`;
             
-            // Reset radio buttons to default 'efficiency'
             const defaultRadio = document.querySelector('input[name="facPref"][value="efficiency"]');
             if(defaultRadio) defaultRadio.checked = true;
             
@@ -479,24 +472,46 @@
             const prefRadio = document.querySelector('input[name="facPref"]:checked');
             const pref = prefRadio ? prefRadio.value : 'efficiency';
 
+            // Store the current facility's chosen preference for future reference
+            facilityPreferences[currentFlowIndex] = pref;
+
             for (let j = 0; j < currentN; j++) {
                 const inputEl = document.getElementById(`private_flow_${j}`);
-                let val = parseInt(inputEl.value);
-                if (isNaN(val)) val = 0;
-                val = Math.max(0, Math.min(100, val));
+                let rawVal = parseInt(inputEl.value);
+                if (isNaN(rawVal)) rawVal = 0;
+                rawVal = Math.max(0, Math.min(100, rawVal));
                 
-                // Apply the mathematical transformation based on preference
+                let finalVal = rawVal;
+                
+                // 1. Transform the outgoing flow from the current facility based on THEIR preference
                 if (currentFlowIndex !== j) {
                     if (pref === 'inefficiency') {
-                        val = 100 - val;
+                        finalVal = 100 - rawVal;
                     } else if (pref === 'inbetween') {
-                        val = Math.round((val + 50) / 2);
+                        finalVal = Math.round((rawVal + 50) / 2);
                     }
                 } else {
-                    val = 0;
+                    finalVal = 0;
                 }
                 
-                flowMatrixData[currentFlowIndex][j] = val;
+                flowMatrixData[currentFlowIndex][j] = finalVal;
+
+                // 2. SMART TWO-WAY LOGIC: If this is an N+1 addition, automatically fill in the reverse flow
+                if (isDynamicAddition && j < currentFlowIndex) {
+                    // Pull the old facility's saved preference
+                    const oldPref = facilityPreferences[j];
+                    let reverseVal = rawVal; // Start by assuming symmetric raw flow
+                    
+                    // Transform based on the old facility's preference rules
+                    if (oldPref === 'inefficiency') {
+                        reverseVal = 100 - rawVal;
+                    } else if (oldPref === 'inbetween') {
+                        reverseVal = Math.round((rawVal + 50) / 2);
+                    }
+                    
+                    // Inject the calculated reverse flow into the matrix
+                    flowMatrixData[j][currentFlowIndex] = reverseVal;
+                }
             }
 
             currentFlowIndex++;
@@ -504,6 +519,7 @@
             if (currentFlowIndex < currentN) {
                 renderFlowForm();
             } else {
+                isDynamicAddition = false; // Reset the flag
                 document.getElementById('privateFlowActive').classList.add('hidden');
                 document.getElementById('privateFlowDone').classList.remove('hidden');
                 document.getElementById('solveBtn').disabled = false;
@@ -677,7 +693,6 @@
             let bestAssignment = Array.from({length: n}, (_, i) => i);
             let bestCost = calculateCost(n, distances, flows, bestAssignment);
 
-            // Phase 1: GRASP
             const graspIterations = 50;
             for (let iter = 0; iter < graspIterations; iter++) {
                 let currentAssignment = [...bestAssignment];
@@ -694,7 +709,6 @@
                 }
             }
 
-            // Phase 2: Simulated Annealing
             let currentAssignment = [...bestAssignment];
             let currentCost = bestCost;
             let temperature = 10000.0;
