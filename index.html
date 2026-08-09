@@ -152,7 +152,7 @@
     <h1>Optimal Social Placement</h1>
     <h2>Places people by solving a quadratic assignment problem.</h2>
     <h3>First, define the positions of where everyone will sit/stand. </h3>
-    <h3>Then, have everyone input how well they know / are comfortable with everyone else.</h3>
+    <h3>Then, have everyone input how comfortable they are talking with everyone else.</h3>
     <h3>Then solve for the optimal seating/standing arrangement. Extra people can be added for latecomers.</h3>
         
     
@@ -318,7 +318,7 @@
             for (let i = 0; i < currentN; i++) {
                 const inp = document.getElementById(`facInput_${i}`);
                 const val = inp ? inp.value.trim() : '';
-                names.push(val !== '' ? val : `Facility ${i}`);
+                names.push(val !== '' ? val : `Person ${i}`);
             }
             return names;
         }
