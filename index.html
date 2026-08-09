@@ -151,7 +151,7 @@
         <h3>3. Computed Distance Matrix (Read-only)</h3>
         <div class="matrix-container" id="distContainer"></div>
 
-        <h3>4. Flow Matrix (User Input)</h3>
+        <h3>4. Flow Matrix (User Input, Max 100)</h3>
         <div class="matrix-container" id="flowContainer"></div>
 
         <button id="solveBtn" class="solve-btn" onclick="runSolver()">Calculate Optimal Assignment</button>
@@ -220,7 +220,6 @@
                 input.id = `facInput_${i}`;
                 input.value = presetFacilityNames[i % presetFacilityNames.length] || `Facility ${i}`;
 
-                // Sync text input edits directly to the flow matrix live
                 input.addEventListener('input', () => onFacilityNameChange(i));
 
                 item.appendChild(label);
@@ -286,7 +285,8 @@
                 html += `<tr><th id="flow_row_hdr_${i}">${names[i]}</th>`;
                 for (let j = 0; j < n; j++) {
                     const defaultVal = (i === j) ? 0 : 1;
-                    html += `<td><input type="number" id="flow_${i}_${j}" value="${defaultVal}"></td>`;
+                    // Added min=0 and max=100 constraints
+                    html += `<td><input type="number" id="flow_${i}_${j}" min="0" max="100" value="${defaultVal}"></td>`;
                 }
                 html += '</tr>';
             }
@@ -298,19 +298,13 @@
         // Distance Functions
         // ==========================================
 
-        // Regular Exponential Distance
-        // Scaled down (divided by 50) to prevent integer overflow in javascript calculations
         function calculateExponentialDist(euclideanDistance) {
             if (euclideanDistance === 0) return 0;
             return Math.round(Math.exp(euclideanDistance / 50)); 
         }
 
-        // Custom Exponential Distance
-        // Implemented as a separate function block specifically for later editing / tweaks
         function calculateCustomExponentialDist(euclideanDistance) {
             if (euclideanDistance === 0) return 0;
-            // Placeholder: currently mimicking exponential behavior. 
-            // You can easily modify the formula below for your specific needs later.
             return Math.round(Math.exp(euclideanDistance / 50)); 
         }
 
@@ -420,15 +414,23 @@
             let arr = [];
             for (let i = 0; i < n; i++) {
                 for (let j = 0; j < n; j++) {
-                    let val = document.getElementById(`${prefix}_${i}_${j}`).value;
-                    arr.push(Number(val));
+                    const inputEl = document.getElementById(`${prefix}_${i}_${j}`);
+                    let val = Number(inputEl.value);
+                    
+                    // Force bounds for flow elements just in case the user manually typed > 100 or < 0
+                    if (prefix === 'flow') {
+                        val = Math.max(0, Math.min(100, val));
+                        inputEl.value = val; // visually correct it in the UI
+                    }
+                    
+                    arr.push(val);
                 }
             }
             return arr;
         }
 
         // =========================================================================
-        // Configurable QAP Solver Engine (Minimization / Maximization)
+        // Configurable QAP Solver Engine
         // =========================================================================
 
         function calculateCost(n, distances, flows, assignment) {
@@ -599,7 +601,7 @@
             ).join('<br>');
 
             document.getElementById('resultAssignment').innerHTML = formattedMapping;
-            costEl.innerText = result.cost.toLocaleString(); // Added formatting to easily read large numbers
+            costEl.innerText = result.cost.toLocaleString();
             
             renderSolutionMap(result.assignment, facNames, mode);
 
