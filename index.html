@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Visual QAP Solver - Dual Mode</title>
+    <title>Visual QAP Solver - Dual Mode & Custom Distances</title>
     <style>
         body { font-family: sans-serif; max-width: 950px; margin: 20px auto; padding: 0 10px; }
         
@@ -94,7 +94,7 @@
         table { border-collapse: collapse; }
         th { background: #e9ecef; padding: 6px 8px; font-size: 12px; border: 1px solid #ccc; text-align: center; white-space: nowrap; }
         td { padding: 2px; }
-        input[type="number"] { width: 55px; padding: 4px; font-size: 13px; text-align: center; }
+        input[type="number"] { width: 65px; padding: 4px; font-size: 13px; text-align: center; }
         input.readonly-dist { background-color: #f0f0f0; border: 1px solid #ccc; }
         
         .hidden { display: none; }
@@ -126,6 +126,15 @@
             </select>
         </div>
 
+        <div class="control-group">
+            <label for="distFunction">Distance Calculation:</label>
+            <select id="distFunction" onchange="if(nodes.length > 0) updateDistanceMatrix()">
+                <option value="euclidean" selected>📏 Euclidean Distance</option>
+                <option value="exponential">📈 Exponential Distance</option>
+                <option value="custom_exponential">⚙️ Custom Exponential</option>
+            </select>
+        </div>
+
         <button class="gen-btn" onclick="generateWorkspace()">Generate Setup</button>
     </div>
 
@@ -136,7 +145,7 @@
         <div id="facilityGrid" class="facility-grid"></div>
 
         <h3>2. Drag & Drop Locations (Auto-calculates Distances)</h3>
-        <p class="instruction">Drag the numbered location nodes around the area below. Distances update in real time as Euclidean distance.</p>
+        <p class="instruction">Drag the numbered location nodes around the area below. Distances update in real time based on your selected calculation method.</p>
         <div id="canvasBox" class="canvas-box"></div>
 
         <h3>3. Computed Distance Matrix (Read-only)</h3>
@@ -286,6 +295,26 @@
         }
 
         // ==========================================
+        // Distance Functions
+        // ==========================================
+
+        // Regular Exponential Distance
+        // Scaled down (divided by 50) to prevent integer overflow in javascript calculations
+        function calculateExponentialDist(euclideanDistance) {
+            if (euclideanDistance === 0) return 0;
+            return Math.round(Math.exp(euclideanDistance / 50)); 
+        }
+
+        // Custom Exponential Distance
+        // Implemented as a separate function block specifically for later editing / tweaks
+        function calculateCustomExponentialDist(euclideanDistance) {
+            if (euclideanDistance === 0) return 0;
+            // Placeholder: currently mimicking exponential behavior. 
+            // You can easily modify the formula below for your specific needs later.
+            return Math.round(Math.exp(euclideanDistance / 50)); 
+        }
+
+        // ==========================================
         // 2D Interactive Drag & Drop Node System
         // ==========================================
 
@@ -363,14 +392,26 @@
 
         function updateDistanceMatrix() {
             const n = nodes.length;
+            const distFuncSelection = document.getElementById('distFunction').value;
+
             for (let i = 0; i < n; i++) {
                 for (let j = 0; j < n; j++) {
                     const dx = nodes[i].x - nodes[j].x;
                     const dy = nodes[i].y - nodes[j].y;
-                    const dist = Math.round(Math.hypot(dx, dy));
+                    const euclidean = Math.hypot(dx, dy);
+                    
+                    let finalDist = 0;
+
+                    if (distFuncSelection === 'euclidean') {
+                        finalDist = Math.round(euclidean);
+                    } else if (distFuncSelection === 'exponential') {
+                        finalDist = calculateExponentialDist(euclidean);
+                    } else if (distFuncSelection === 'custom_exponential') {
+                        finalDist = calculateCustomExponentialDist(euclidean);
+                    }
                     
                     const cell = document.getElementById(`dist_${i}_${j}`);
-                    if (cell) cell.value = dist;
+                    if (cell) cell.value = finalDist;
                 }
             }
         }
@@ -558,7 +599,7 @@
             ).join('<br>');
 
             document.getElementById('resultAssignment').innerHTML = formattedMapping;
-            costEl.innerText = result.cost;
+            costEl.innerText = result.cost.toLocaleString(); // Added formatting to easily read large numbers
             
             renderSolutionMap(result.assignment, facNames, mode);
 
