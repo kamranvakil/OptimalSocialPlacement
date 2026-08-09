@@ -464,7 +464,7 @@
             setTimeout(() => {
                 const firstInputId = currentFlowIndex === 0 ? `private_flow_1` : `private_flow_0`;
                 const firstInput = document.getElementById(firstInputId);
-                if(firstInput) firstInput.focus();
+                if(firstInput) firstInput.focus({ preventScroll: true });
             }, 100);
         }
 
