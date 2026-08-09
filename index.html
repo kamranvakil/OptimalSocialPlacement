@@ -115,7 +115,8 @@
     <div class="control-panel">
         <div class="control-group">
             <label for="nSize">Locations / Facilities (N, max 16):</label>
-            <input type="number" id="nSize" min="2" max="16" value="5">
+            <!-- Added inputmode and pattern for mobile number pad -->
+            <input type="number" id="nSize" min="2" max="16" value="5" inputmode="numeric" pattern="[0-9]*">
         </div>
         
         <div class="control-group">
@@ -264,7 +265,8 @@
                 html += `<tr><th>Loc ${i}</th>`;
                 for (let j = 0; j < n; j++) {
                     const defaultVal = (i === j) ? 0 : 1;
-                    html += `<td><input type="number" id="dist_${i}_${j}" value="${defaultVal}" readonly class="readonly-dist"></td>`;
+                    // Added inputmode and pattern for consistency
+                    html += `<td><input type="number" id="dist_${i}_${j}" value="${defaultVal}" readonly class="readonly-dist" inputmode="numeric" pattern="[0-9]*"></td>`;
                 }
                 html += '</tr>';
             }
@@ -285,8 +287,8 @@
                 html += `<tr><th id="flow_row_hdr_${i}">${names[i]}</th>`;
                 for (let j = 0; j < n; j++) {
                     const defaultVal = (i === j) ? 0 : 1;
-                    // Added min=0 and max=100 constraints
-                    html += `<td><input type="number" id="flow_${i}_${j}" min="0" max="100" value="${defaultVal}"></td>`;
+                    // Added inputmode and pattern to trigger 10-key numeric pad on mobile
+                    html += `<td><input type="number" id="flow_${i}_${j}" min="0" max="100" value="${defaultVal}" inputmode="numeric" pattern="[0-9]*"></td>`;
                 }
                 html += '</tr>';
             }
