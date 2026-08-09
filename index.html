@@ -87,7 +87,7 @@
         }
         .facility-item { display: flex; flex-direction: column; gap: 4px; }
         .facility-item label { font-size: 13px; font-weight: bold; color: #333; }
-        .facility-item select { padding: 6px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; }
+        .facility-item input[type="text"] { padding: 6px 8px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; }
 
         /* Table Matrix Styles */
         .matrix-container { overflow-x: auto; margin-bottom: 20px; max-height: 280px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; }
@@ -131,8 +131,8 @@
 
     <div id="solverSection" class="hidden">
         
-        <h3>1. Assign Facility Names</h3>
-        <p class="instruction">Choose names for each facility. These names update the Flow Matrix labels automatically.</p>
+        <h3>1. Assign Custom Facility Names</h3>
+        <p class="instruction">Type custom facility names below. Matrix labels update automatically in real time as you type.</p>
         <div id="facilityGrid" class="facility-grid"></div>
 
         <h3>2. Drag & Drop Locations (Auto-calculates Distances)</h3>
@@ -185,13 +185,17 @@
             document.getElementById('solverSection').classList.remove('hidden');
             document.getElementById('resultBox').classList.add('hidden');
 
-            buildFacilitySelectors(currentN);
+            buildFacilityInputs(currentN);
             document.getElementById('distContainer').innerHTML = buildDistTableHTML(currentN);
             document.getElementById('flowContainer').innerHTML = buildFlowTableHTML(currentN);
             initInteractiveNodes(currentN);
         }
 
-        function buildFacilitySelectors(n) {
+        // ==========================================
+        // Custom Text Input Facility UI
+        // ==========================================
+
+        function buildFacilityInputs(n) {
             const grid = document.getElementById('facilityGrid');
             grid.innerHTML = '';
 
@@ -202,23 +206,16 @@
                 const label = document.createElement('label');
                 label.innerText = `Facility ${i} Name:`;
 
-                const select = document.createElement('select');
-                select.id = `facSelect_${i}`;
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.id = `facInput_${i}`;
+                input.value = presetFacilityNames[i % presetFacilityNames.length] || `Facility ${i}`;
 
-                presetFacilityNames.forEach((name, idx) => {
-                    const opt = document.createElement('option');
-                    opt.value = name;
-                    opt.innerText = name;
-                    if (idx === (i % presetFacilityNames.length)) {
-                        opt.selected = true;
-                    }
-                    select.appendChild(opt);
-                });
-
-                select.addEventListener('change', () => onFacilityNameChange(i));
+                // Sync text input edits directly to the flow matrix live
+                input.addEventListener('input', () => onFacilityNameChange(i));
 
                 item.appendChild(label);
-                item.appendChild(select);
+                item.appendChild(input);
                 grid.appendChild(item);
             }
         }
@@ -226,20 +223,26 @@
         function getFacilityNames() {
             let names = [];
             for (let i = 0; i < currentN; i++) {
-                const sel = document.getElementById(`facSelect_${i}`);
-                names.push(sel ? sel.value : `Facility ${i}`);
+                const inp = document.getElementById(`facInput_${i}`);
+                const val = inp ? inp.value.trim() : '';
+                names.push(val !== '' ? val : `Facility ${i}`);
             }
             return names;
         }
 
         function onFacilityNameChange(index) {
-            const newName = document.getElementById(`facSelect_${index}`).value;
+            const inp = document.getElementById(`facInput_${index}`);
+            const newName = (inp && inp.value.trim() !== '') ? inp.value.trim() : `Facility ${index}`;
             const colHdr = document.getElementById(`flow_col_hdr_${index}`);
             const rowHdr = document.getElementById(`flow_row_hdr_${index}`);
             
             if (colHdr) colHdr.innerText = newName;
             if (rowHdr) rowHdr.innerText = newName;
         }
+
+        // ==========================================
+        // Matrix HTML Builders
+        // ==========================================
 
         function buildDistTableHTML(n) {
             let html = '<table>';
@@ -281,6 +284,10 @@
             html += '</table>';
             return html;
         }
+
+        // ==========================================
+        // 2D Interactive Drag & Drop Node System
+        // ==========================================
 
         function initInteractiveNodes(n) {
             const box = document.getElementById('canvasBox');
@@ -380,7 +387,7 @@
         }
 
         // =========================================================================
-        // Configurable Configurable QAP Solver Engine (Minimization / Maximization)
+        // Configurable QAP Solver Engine (Minimization / Maximization)
         // =========================================================================
 
         function calculateCost(n, distances, flows, assignment) {
