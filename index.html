@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Visual QAP Solver - Private Flow Mode</title>
+    <title>Visual QAP Solver - Individual Preferences</title>
     <style>
         body { font-family: sans-serif; max-width: 950px; margin: 20px auto; padding: 0 10px; }
         
@@ -64,15 +64,12 @@
             white-space: nowrap;
             user-select: none;
             pointer-events: none;
+            border: 2px solid #28a745; 
+            background: #f4fff6;
         }
-        .node-min { background: #28a745; }
-        .node-max { background: #dc3545; }
+        .node-solution { background: #28a745; }
 
-        .solution-min { border: 2px solid #28a745; background: #f4fff6; }
-        .solution-max { border: 2px solid #dc3545; background: #fff5f5; }
-
-        .result-min { padding: 20px; background: #eefdf2; border: 1px solid #c3e6cb; border-radius: 5px; margin-top: 20px; }
-        .result-max { padding: 20px; background: #fff0f0; border: 1px solid #f5c6cb; border-radius: 5px; margin-top: 20px; }
+        .result-box { padding: 20px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; margin-top: 20px; }
 
         /* Facility Selector Styles */
         .facility-grid {
@@ -117,6 +114,15 @@
             margin-bottom: 20px;
         }
         .private-flow-box h4 { margin-top: 0; color: #856404; font-size: 18px; }
+        
+        .pref-selector {
+            background: #fff;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #ffeeba;
+            margin-bottom: 15px;
+            max-width: 350px;
+        }
     </style>
 </head>
 <body>
@@ -129,14 +135,6 @@
             <input type="number" id="nSize" min="2" max="16" value="5" inputmode="numeric" pattern="[0-9]*">
         </div>
         
-        <div class="control-group">
-            <label for="solveMode">Optimization Objective:</label>
-            <select id="solveMode">
-                <option value="min" selected>🟢 Most Efficient (Minimize Cost)</option>
-                <option value="max">🔴 Least Efficient (Maximize Cost)</option>
-            </select>
-        </div>
-
         <div class="control-group">
             <label for="distFunction">Distance Calculation:</label>
             <select id="distFunction" onchange="if(nodes.length > 0) updateDistanceMatrix()">
@@ -162,27 +160,38 @@
         <h3>3. Computed Distance Matrix (Read-only)</h3>
         <div class="matrix-container" id="distContainer"></div>
 
-        <h3>4. Private Flow Input</h3>
-        <p class="instruction">Hand the device to each facility representative sequentially. They will input their flow numbers in private.</p>
+        <h3>4. Private Flow & Preference Input</h3>
+        <p class="instruction">Hand the device to each facility representative sequentially. They will input their routing preference and flow numbers in private.</p>
         <div id="privateFlowContainer" class="private-flow-box">
             <div id="privateFlowActive">
                 <h4 id="flowTurnTitle"></h4>
-                <p class="instruction" style="color: #664d03;">Enter the amount of traffic/flow from your facility to the others (0-100). Once submitted, the screen clears for the next person.</p>
+                
+                <div class="pref-selector control-group">
+                    <label for="facilityPref" style="color: #664d03;">Your Routing Preference:</label>
+                    <select id="facilityPref">
+                        <option value="efficiency" selected>🟢 Efficiency (I want to be close to my high flows)</option>
+                        <option value="inbetween">🟡 In-between (Balanced routing)</option>
+                        <option value="inefficiency">🔴 Inefficiency (I want to be far from my high flows)</option>
+                    </select>
+                </div>
+
+                <p class="instruction" style="color: #664d03;">Enter the amount of traffic/flow from your facility to the others (0-100). The system will automatically adjust your numbers based on your preference when submitted.</p>
                 <div id="flowInputsList" class="facility-grid" style="background: white;"></div>
                 <button id="nextFlowBtn" class="gen-btn" style="background-color: #28a745; margin-top: 10px;" onclick="submitCurrentFlow()">Submit & Next</button>
             </div>
             <div id="privateFlowDone" class="hidden">
                 <h4 style="color: #155724; margin-bottom: 5px;">✅ Data Collection Complete</h4>
-                <p style="color: #155724; margin-top: 0;">All facilities have confidentially submitted their flow data.</p>
+                <p style="color: #155724; margin-top: 0;">All facilities have confidentially submitted their preferences and flow data.</p>
                 <button class="gen-btn" style="background-color: #dc3545;" onclick="initPrivateFlow(currentN)">Reset / Start Over</button>
             </div>
         </div>
 
         <button id="solveBtn" class="solve-btn" onclick="runSolver()" disabled>Calculate Optimal Assignment</button>
         
-        <div id="resultBox" class="hidden">
+        <div id="resultBox" class="hidden result-box">
             <h2 id="resultTitle">Solution Results</h2>
-            <strong>Total Cost:</strong> <span id="resultCost" style="font-size: 20px; font-weight: bold;"></span><br><br>
+            <strong>Relative Algorithmic Cost:</strong> <span id="resultCost" style="font-size: 20px; font-weight: bold; color:#0056b3;"></span><br>
+            <small style="color: #666;">(Calculated using the customized, post-preference flow values)</small><br><br>
             
             <strong>Facility Mapping List:</strong> 
             <div id="resultAssignment" class="mapping-list"></div>
@@ -268,17 +277,12 @@
         }
 
         function onFacilityNameChange(index) {
-            // Update labels in the private flow form dynamically if the name changes
             if (currentFlowIndex < currentN) {
                 const names = getFacilityNames();
-                
-                // Update Title
                 const titleEl = document.getElementById('flowTurnTitle');
                 if (titleEl) {
                     titleEl.innerText = `Turn: ${names[currentFlowIndex]} (${currentFlowIndex + 1} of ${currentN})`;
                 }
-                
-                // Update specific input label
                 const label = document.getElementById(`label_flow_${index}`);
                 if (label) {
                     label.innerText = `To ${names[index]}:`;
@@ -311,18 +315,15 @@
         }
 
         // ==========================================
-        // Private Flow Logic
+        // Private Flow Logic & Math Transformations
         // ==========================================
         
         function initPrivateFlow(n) {
             currentFlowIndex = 0;
-            // Initialize empty N x N matrix
             flowMatrixData = Array.from({length: n}, () => Array(n).fill(0));
             
             document.getElementById('privateFlowActive').classList.remove('hidden');
             document.getElementById('privateFlowDone').classList.add('hidden');
-            
-            // Disable solver
             document.getElementById('solveBtn').disabled = true;
             
             renderFlowForm();
@@ -333,6 +334,7 @@
             const turnName = names[currentFlowIndex];
             
             document.getElementById('flowTurnTitle').innerText = `Turn: ${turnName} (${currentFlowIndex + 1} of ${currentN})`;
+            document.getElementById('facilityPref').value = 'efficiency'; // reset dropdown
             
             const listContainer = document.getElementById('flowInputsList');
             listContainer.innerHTML = '';
@@ -353,7 +355,6 @@
                 input.inputMode = "numeric";
                 input.pattern = "[0-9]*";
                 
-                // Defaults (0 to self, 1 to others)
                 input.value = (currentFlowIndex === j) ? 0 : 1;
                 
                 if (currentFlowIndex === j) {
@@ -374,7 +375,6 @@
                 btn.innerText = "Submit & Pass Device";
             }
             
-            // Focus on the first available input for convenience
             setTimeout(() => {
                 const firstInputId = currentFlowIndex === 0 ? `private_flow_1` : `private_flow_0`;
                 const firstInput = document.getElementById(firstInputId);
@@ -383,14 +383,26 @@
         }
 
         function submitCurrentFlow() {
-            // Read and store values
+            const pref = document.getElementById('facilityPref').value;
+
             for (let j = 0; j < currentN; j++) {
                 const inputEl = document.getElementById(`private_flow_${j}`);
                 let val = parseInt(inputEl.value);
                 if (isNaN(val)) val = 0;
-                
-                // Clamp bounds
                 val = Math.max(0, Math.min(100, val));
+                
+                // Apply the mathematical transformation based on preference
+                if (currentFlowIndex !== j) {
+                    if (pref === 'inefficiency') {
+                        val = 100 - val;
+                    } else if (pref === 'inbetween') {
+                        val = Math.round((val + 50) / 2);
+                    }
+                    // if 'efficiency', val remains unchanged
+                } else {
+                    val = 0; // Self-flow is always 0
+                }
+                
                 flowMatrixData[currentFlowIndex][j] = val;
             }
 
@@ -399,13 +411,11 @@
             if (currentFlowIndex < currentN) {
                 renderFlowForm();
             } else {
-                // Done with all facilities
                 document.getElementById('privateFlowActive').classList.add('hidden');
                 document.getElementById('privateFlowDone').classList.remove('hidden');
                 document.getElementById('solveBtn').disabled = false;
             }
         }
-
 
         // ==========================================
         // Distance Functions
@@ -523,7 +533,6 @@
             }
         }
 
-        // Retrieves distance matrix
         function getFlattenedDistMatrix(n) {
             let arr = [];
             for (let i = 0; i < n; i++) {
@@ -536,7 +545,7 @@
         }
 
         // =========================================================================
-        // Configurable QAP Solver Engine
+        // Minimization Engine (Always solves for Minimization of post-preference flow)
         // =========================================================================
 
         function calculateCost(n, distances, flows, assignment) {
@@ -564,22 +573,14 @@
             return delta;
         }
 
-        function isBetter(a, b, mode) {
-            return mode === 'min' ? a < b : a > b;
-        }
-
-        function isDeltaBetter(delta, mode) {
-            return mode === 'min' ? delta < 0 : delta > 0;
-        }
-
-        function localSearch2Opt(n, distances, flows, assignment, currentCost, mode) {
+        function localSearch2Opt(n, distances, flows, assignment, currentCost) {
             let improvement = true;
             while (improvement) {
                 improvement = false;
                 for (let u = 0; u < n - 1; u++) {
                     for (let v = u + 1; v < n; v++) {
                         let delta = calculateDelta(n, distances, flows, assignment, u, v);
-                        if (isDeltaBetter(delta, mode)) {
+                        if (delta < 0) { // Min mode logic
                             let temp = assignment[u];
                             assignment[u] = assignment[v];
                             assignment[v] = temp;
@@ -592,7 +593,7 @@
             return currentCost;
         }
 
-        function solveQAP(n, distances, flows, mode) {
+        function solveQAP(n, distances, flows) {
             let bestAssignment = Array.from({length: n}, (_, i) => i);
             let bestCost = calculateCost(n, distances, flows, bestAssignment);
 
@@ -606,9 +607,9 @@
                 }
 
                 let currentCost = calculateCost(n, distances, flows, currentAssignment);
-                currentCost = localSearch2Opt(n, distances, flows, currentAssignment, currentCost, mode);
+                currentCost = localSearch2Opt(n, distances, flows, currentAssignment, currentCost);
 
-                if (isBetter(currentCost, bestCost, mode)) {
+                if (currentCost < bestCost) {
                     bestCost = currentCost;
                     bestAssignment = [...currentAssignment];
                 }
@@ -629,12 +630,8 @@
 
                 let delta = calculateDelta(n, distances, flows, currentAssignment, u, v);
 
-                let accept = false;
-                if (mode === 'min') {
-                    accept = (delta < 0) || (Math.exp(-delta / temperature) > Math.random());
-                } else {
-                    accept = (delta > 0) || (Math.exp(delta / temperature) > Math.random());
-                }
+                // Min mode accept logic
+                let accept = (delta < 0) || (Math.exp(-delta / temperature) > Math.random());
 
                 if (accept) {
                     let temp = currentAssignment[u];
@@ -642,7 +639,7 @@
                     currentAssignment[v] = temp;
                     currentCost += delta;
 
-                    if (isBetter(currentCost, bestCost, mode)) {
+                    if (currentCost < bestCost) {
                         bestCost = currentCost;
                         bestAssignment = [...currentAssignment];
                     }
@@ -653,18 +650,16 @@
             return { assignment: bestAssignment, cost: bestCost };
         }
 
-        function renderSolutionMap(assignment, facNames, mode) {
+        function renderSolutionMap(assignment, facNames) {
             const solBox = document.getElementById('solutionCanvasBox');
             solBox.innerHTML = '';
-
-            const nodeClass = mode === 'min' ? 'solution-node node-min' : 'solution-node node-max';
 
             nodes.forEach((node, locationIdx) => {
                 const assignedFacIdx = assignment[locationIdx];
                 const facilityName = facNames[assignedFacIdx];
 
                 const el = document.createElement('div');
-                el.className = nodeClass;
+                el.className = 'solution-node node-solution';
                 el.style.left = node.x + 'px';
                 el.style.top = node.y + 'px';
                 
@@ -678,35 +673,24 @@
         }
 
         function runSolver() {
-            // Safety check
             if(currentFlowIndex < currentN) return; 
 
-            const mode = document.getElementById('solveMode').value;
             const distArr = getFlattenedDistMatrix(currentN);
             
-            // Flatten the secretly populated 2D flow array
+            // The flow array already holds the transformed values from when the user clicked submit.
             const flowArr = flowMatrixData.flat();
             
             const facNames = getFacilityNames();
 
-            const result = solveQAP(currentN, distArr, flowArr, mode);
+            // The solver naturally minimizes the modified inputs. 
+            // Inverted inputs (for inefficiency) will naturally result in max distance pairings.
+            const result = solveQAP(currentN, distArr, flowArr);
 
             const resultBox = document.getElementById('resultBox');
-            const solCanvas = document.getElementById('solutionCanvasBox');
-            const titleEl = document.getElementById('resultTitle');
             const costEl = document.getElementById('resultCost');
+            const titleEl = document.getElementById('resultTitle');
 
-            if (mode === 'min') {
-                resultBox.className = 'result-min';
-                solCanvas.className = 'canvas-box solution-min';
-                titleEl.innerText = '🟢 Most Efficient (Optimal) Solution';
-                costEl.style.color = '#28a745';
-            } else {
-                resultBox.className = 'result-max';
-                solCanvas.className = 'canvas-box solution-max';
-                titleEl.innerText = '🔴 Least Efficient (Worst-Case) Solution';
-                costEl.style.color = '#dc3545';
-            }
+            titleEl.innerText = '🎯 Customized Optimal Assignment';
 
             let formattedMapping = result.assignment.map((facilityIdx, locationIdx) => 
                 `• <strong>Location ${locationIdx}</strong> ➔ ${facNames[facilityIdx]}`
@@ -715,11 +699,9 @@
             document.getElementById('resultAssignment').innerHTML = formattedMapping;
             costEl.innerText = result.cost.toLocaleString();
             
-            renderSolutionMap(result.assignment, facNames, mode);
+            renderSolutionMap(result.assignment, facNames);
 
             resultBox.classList.remove('hidden');
-            
-            // Auto-scroll to results
             resultBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     </script>
