@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Visual QAP Solver - Dual Mode & Custom Distances</title>
+    <title>Visual QAP Solver - Private Flow Mode</title>
     <style>
         body { font-family: sans-serif; max-width: 950px; margin: 20px auto; padding: 0 10px; }
         
@@ -87,25 +87,36 @@
         }
         .facility-item { display: flex; flex-direction: column; gap: 4px; }
         .facility-item label { font-size: 13px; font-weight: bold; color: #333; }
-        .facility-item input[type="text"] { padding: 6px 8px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; }
+        .facility-item input[type="text"], .facility-item input[type="number"] { padding: 6px 8px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; }
 
         /* Table Matrix Styles */
         .matrix-container { overflow-x: auto; margin-bottom: 20px; max-height: 280px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; }
         table { border-collapse: collapse; }
         th { background: #e9ecef; padding: 6px 8px; font-size: 12px; border: 1px solid #ccc; text-align: center; white-space: nowrap; }
         td { padding: 2px; }
-        input[type="number"] { width: 65px; padding: 4px; font-size: 13px; text-align: center; }
-        input.readonly-dist { background-color: #f0f0f0; border: 1px solid #ccc; }
+        input.dist-input { width: 65px; padding: 4px; font-size: 13px; text-align: center; background-color: #f0f0f0; border: 1px solid #ccc; }
         
         .hidden { display: none; }
         button { padding: 10px 18px; font-size: 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
         .gen-btn { background-color: #007bff; color: white; border: none; }
         .gen-btn:hover { background-color: #0056b3; }
-        .solve-btn { background-color: #6f42c1; color: white; border: none; margin-bottom: 20px; }
-        .solve-btn:hover { background-color: #593196; }
+        
+        .solve-btn { background-color: #6f42c1; color: white; border: none; margin-bottom: 20px; transition: opacity 0.3s; }
+        .solve-btn:hover:not(:disabled) { background-color: #593196; }
+        .solve-btn:disabled { background-color: #aaa; cursor: not-allowed; opacity: 0.6; }
 
         .instruction { font-size: 14px; color: #555; margin-bottom: 8px; }
         .mapping-list { margin-top: 10px; font-size: 15px; line-height: 1.6; margin-bottom: 15px; }
+
+        /* Private Flow Box */
+        .private-flow-box {
+            background: #fffbe6;
+            border: 2px solid #ffeeba;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .private-flow-box h4 { margin-top: 0; color: #856404; font-size: 18px; }
     </style>
 </head>
 <body>
@@ -115,7 +126,6 @@
     <div class="control-panel">
         <div class="control-group">
             <label for="nSize">Locations / Facilities (N, max 16):</label>
-            <!-- Added inputmode and pattern for mobile number pad -->
             <input type="number" id="nSize" min="2" max="16" value="5" inputmode="numeric" pattern="[0-9]*">
         </div>
         
@@ -142,20 +152,33 @@
     <div id="solverSection" class="hidden">
         
         <h3>1. Assign Custom Facility Names</h3>
-        <p class="instruction">Type custom facility names below. Matrix labels update automatically in real time as you type.</p>
+        <p class="instruction">Type custom facility names below. They will automatically update across the app.</p>
         <div id="facilityGrid" class="facility-grid"></div>
 
-        <h3>2. Drag & Drop Locations (Auto-calculates Distances)</h3>
-        <p class="instruction">Drag the numbered location nodes around the area below. Distances update in real time based on your selected calculation method.</p>
+        <h3>2. Drag & Drop Locations</h3>
+        <p class="instruction">Drag the numbered location nodes around the area below. Distances update in real time.</p>
         <div id="canvasBox" class="canvas-box"></div>
 
         <h3>3. Computed Distance Matrix (Read-only)</h3>
         <div class="matrix-container" id="distContainer"></div>
 
-        <h3>4. Flow Matrix (User Input, Max 100)</h3>
-        <div class="matrix-container" id="flowContainer"></div>
+        <h3>4. Private Flow Input</h3>
+        <p class="instruction">Hand the device to each facility representative sequentially. They will input their flow numbers in private.</p>
+        <div id="privateFlowContainer" class="private-flow-box">
+            <div id="privateFlowActive">
+                <h4 id="flowTurnTitle"></h4>
+                <p class="instruction" style="color: #664d03;">Enter the amount of traffic/flow from your facility to the others (0-100). Once submitted, the screen clears for the next person.</p>
+                <div id="flowInputsList" class="facility-grid" style="background: white;"></div>
+                <button id="nextFlowBtn" class="gen-btn" style="background-color: #28a745; margin-top: 10px;" onclick="submitCurrentFlow()">Submit & Next</button>
+            </div>
+            <div id="privateFlowDone" class="hidden">
+                <h4 style="color: #155724; margin-bottom: 5px;">✅ Data Collection Complete</h4>
+                <p style="color: #155724; margin-top: 0;">All facilities have confidentially submitted their flow data.</p>
+                <button class="gen-btn" style="background-color: #dc3545;" onclick="initPrivateFlow(currentN)">Reset / Start Over</button>
+            </div>
+        </div>
 
-        <button id="solveBtn" class="solve-btn" onclick="runSolver()">Calculate Optimal Assignment</button>
+        <button id="solveBtn" class="solve-btn" onclick="runSolver()" disabled>Calculate Optimal Assignment</button>
         
         <div id="resultBox" class="hidden">
             <h2 id="resultTitle">Solution Results</h2>
@@ -175,6 +198,10 @@
         let nodes = [];
         let selectedNode = null;
         let dragOffset = { x: 0, y: 0 };
+        
+        // Private Flow State
+        let currentFlowIndex = 0;
+        let flowMatrixData = [];
 
         const presetFacilityNames = [
             "Warehouse", "Assembly Line", "Office / HQ", "Loading Dock",
@@ -197,8 +224,9 @@
 
             buildFacilityInputs(currentN);
             document.getElementById('distContainer').innerHTML = buildDistTableHTML(currentN);
-            document.getElementById('flowContainer').innerHTML = buildFlowTableHTML(currentN);
+            
             initInteractiveNodes(currentN);
+            initPrivateFlow(currentN);
         }
 
         // ==========================================
@@ -240,17 +268,26 @@
         }
 
         function onFacilityNameChange(index) {
-            const inp = document.getElementById(`facInput_${index}`);
-            const newName = (inp && inp.value.trim() !== '') ? inp.value.trim() : `Facility ${index}`;
-            const colHdr = document.getElementById(`flow_col_hdr_${index}`);
-            const rowHdr = document.getElementById(`flow_row_hdr_${index}`);
-            
-            if (colHdr) colHdr.innerText = newName;
-            if (rowHdr) rowHdr.innerText = newName;
+            // Update labels in the private flow form dynamically if the name changes
+            if (currentFlowIndex < currentN) {
+                const names = getFacilityNames();
+                
+                // Update Title
+                const titleEl = document.getElementById('flowTurnTitle');
+                if (titleEl) {
+                    titleEl.innerText = `Turn: ${names[currentFlowIndex]} (${currentFlowIndex + 1} of ${currentN})`;
+                }
+                
+                // Update specific input label
+                const label = document.getElementById(`label_flow_${index}`);
+                if (label) {
+                    label.innerText = `To ${names[index]}:`;
+                }
+            }
         }
 
         // ==========================================
-        // Matrix HTML Builders
+        // Distance HTML Builder
         // ==========================================
 
         function buildDistTableHTML(n) {
@@ -265,8 +302,7 @@
                 html += `<tr><th>Loc ${i}</th>`;
                 for (let j = 0; j < n; j++) {
                     const defaultVal = (i === j) ? 0 : 1;
-                    // Added inputmode and pattern for consistency
-                    html += `<td><input type="number" id="dist_${i}_${j}" value="${defaultVal}" readonly class="readonly-dist" inputmode="numeric" pattern="[0-9]*"></td>`;
+                    html += `<td><input type="number" id="dist_${i}_${j}" value="${defaultVal}" readonly class="dist-input" inputmode="numeric" pattern="[0-9]*"></td>`;
                 }
                 html += '</tr>';
             }
@@ -274,27 +310,102 @@
             return html;
         }
 
-        function buildFlowTableHTML(n) {
+        // ==========================================
+        // Private Flow Logic
+        // ==========================================
+        
+        function initPrivateFlow(n) {
+            currentFlowIndex = 0;
+            // Initialize empty N x N matrix
+            flowMatrixData = Array.from({length: n}, () => Array(n).fill(0));
+            
+            document.getElementById('privateFlowActive').classList.remove('hidden');
+            document.getElementById('privateFlowDone').classList.add('hidden');
+            
+            // Disable solver
+            document.getElementById('solveBtn').disabled = true;
+            
+            renderFlowForm();
+        }
+
+        function renderFlowForm() {
             const names = getFacilityNames();
-            let html = '<table>';
-            html += '<tr><th></th>';
-            for (let j = 0; j < n; j++) {
-                html += `<th id="flow_col_hdr_${j}">${names[j]}</th>`;
-            }
-            html += '</tr>';
+            const turnName = names[currentFlowIndex];
+            
+            document.getElementById('flowTurnTitle').innerText = `Turn: ${turnName} (${currentFlowIndex + 1} of ${currentN})`;
+            
+            const listContainer = document.getElementById('flowInputsList');
+            listContainer.innerHTML = '';
 
-            for (let i = 0; i < n; i++) {
-                html += `<tr><th id="flow_row_hdr_${i}">${names[i]}</th>`;
-                for (let j = 0; j < n; j++) {
-                    const defaultVal = (i === j) ? 0 : 1;
-                    // Added inputmode and pattern to trigger 10-key numeric pad on mobile
-                    html += `<td><input type="number" id="flow_${i}_${j}" min="0" max="100" value="${defaultVal}" inputmode="numeric" pattern="[0-9]*"></td>`;
+            for (let j = 0; j < currentN; j++) {
+                const item = document.createElement('div');
+                item.className = 'facility-item';
+                
+                const label = document.createElement('label');
+                label.id = `label_flow_${j}`;
+                label.innerText = `To ${names[j]}:`;
+                
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.id = `private_flow_${j}`;
+                input.min = "0";
+                input.max = "100";
+                input.inputMode = "numeric";
+                input.pattern = "[0-9]*";
+                
+                // Defaults (0 to self, 1 to others)
+                input.value = (currentFlowIndex === j) ? 0 : 1;
+                
+                if (currentFlowIndex === j) {
+                    input.readOnly = true;
+                    input.style.backgroundColor = "#eee";
+                    input.style.color = "#999";
                 }
-                html += '</tr>';
+
+                item.appendChild(label);
+                item.appendChild(input);
+                listContainer.appendChild(item);
             }
-            html += '</table>';
-            return html;
+
+            const btn = document.getElementById('nextFlowBtn');
+            if (currentFlowIndex === currentN - 1) {
+                btn.innerText = "Submit & Finish";
+            } else {
+                btn.innerText = "Submit & Pass Device";
+            }
+            
+            // Focus on the first available input for convenience
+            setTimeout(() => {
+                const firstInputId = currentFlowIndex === 0 ? `private_flow_1` : `private_flow_0`;
+                const firstInput = document.getElementById(firstInputId);
+                if(firstInput) firstInput.focus();
+            }, 100);
         }
+
+        function submitCurrentFlow() {
+            // Read and store values
+            for (let j = 0; j < currentN; j++) {
+                const inputEl = document.getElementById(`private_flow_${j}`);
+                let val = parseInt(inputEl.value);
+                if (isNaN(val)) val = 0;
+                
+                // Clamp bounds
+                val = Math.max(0, Math.min(100, val));
+                flowMatrixData[currentFlowIndex][j] = val;
+            }
+
+            currentFlowIndex++;
+            
+            if (currentFlowIndex < currentN) {
+                renderFlowForm();
+            } else {
+                // Done with all facilities
+                document.getElementById('privateFlowActive').classList.add('hidden');
+                document.getElementById('privateFlowDone').classList.remove('hidden');
+                document.getElementById('solveBtn').disabled = false;
+            }
+        }
+
 
         // ==========================================
         // Distance Functions
@@ -412,20 +523,13 @@
             }
         }
 
-        function getFlattenedMatrix(prefix, n) {
+        // Retrieves distance matrix
+        function getFlattenedDistMatrix(n) {
             let arr = [];
             for (let i = 0; i < n; i++) {
                 for (let j = 0; j < n; j++) {
-                    const inputEl = document.getElementById(`${prefix}_${i}_${j}`);
-                    let val = Number(inputEl.value);
-                    
-                    // Force bounds for flow elements just in case the user manually typed > 100 or < 0
-                    if (prefix === 'flow') {
-                        val = Math.max(0, Math.min(100, val));
-                        inputEl.value = val; // visually correct it in the UI
-                    }
-                    
-                    arr.push(val);
+                    const inputEl = document.getElementById(`dist_${i}_${j}`);
+                    arr.push(Number(inputEl.value));
                 }
             }
             return arr;
@@ -574,9 +678,15 @@
         }
 
         function runSolver() {
+            // Safety check
+            if(currentFlowIndex < currentN) return; 
+
             const mode = document.getElementById('solveMode').value;
-            const distArr = getFlattenedMatrix('dist', currentN);
-            const flowArr = getFlattenedMatrix('flow', currentN);
+            const distArr = getFlattenedDistMatrix(currentN);
+            
+            // Flatten the secretly populated 2D flow array
+            const flowArr = flowMatrixData.flat();
+            
             const facNames = getFacilityNames();
 
             const result = solveQAP(currentN, distArr, flowArr, mode);
@@ -608,6 +718,9 @@
             renderSolutionMap(result.assignment, facNames, mode);
 
             resultBox.classList.remove('hidden');
+            
+            // Auto-scroll to results
+            resultBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     </script>
 </body>
