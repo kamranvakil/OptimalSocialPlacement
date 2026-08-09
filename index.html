@@ -105,7 +105,7 @@
         .instruction { font-size: 14px; color: #555; margin-bottom: 8px; }
         .mapping-list { margin-top: 10px; font-size: 15px; line-height: 1.6; margin-bottom: 15px; }
 
-        /* Private Flow Box */
+        /* Private Flow Box & Radio Buttons */
         .private-flow-box {
             background: #fffbe6;
             border: 2px solid #ffeeba;
@@ -117,12 +117,38 @@
         
         .pref-selector {
             background: #fff;
-            padding: 10px;
+            padding: 15px;
             border-radius: 6px;
             border: 1px solid #ffeeba;
             margin-bottom: 15px;
-            max-width: 350px;
+            max-width: 450px;
         }
+        
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 8px;
+        }
+        
+        .radio-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #333;
+            cursor: pointer;
+            font-weight: normal !important;
+            background: #f8f9fa;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #eee;
+            transition: background 0.2s;
+        }
+        
+        .radio-label:hover { background: #e9ecef; }
+        .radio-label input[type="radio"] { margin: 0; cursor: pointer; width: 16px; height: 16px; }
+
     </style>
 </head>
 <body>
@@ -167,12 +193,21 @@
                 <h4 id="flowTurnTitle"></h4>
                 
                 <div class="pref-selector control-group">
-                    <label for="facilityPref" style="color: #664d03;">Your Routing Preference:</label>
-                    <select id="facilityPref">
-                        <option value="efficiency" selected>🟢 Efficiency (I want to be close to my high flows)</option>
-                        <option value="inbetween">🟡 In-between (Balanced routing)</option>
-                        <option value="inefficiency">🔴 Inefficiency (I want to be far from my high flows)</option>
-                    </select>
+                    <label style="color: #664d03;">Your Routing Preference:</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="facPref" value="efficiency" checked>
+                            🟢 Efficiency (I want to be close to my high flows)
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="facPref" value="inbetween">
+                            🟡 In-between (Balanced routing)
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="facPref" value="inefficiency">
+                            🔴 Inefficiency (I want to be far from my high flows)
+                        </label>
+                    </div>
                 </div>
 
                 <p class="instruction" style="color: #664d03;">Enter the amount of traffic/flow from your facility to the others (0-100). The system will automatically adjust your numbers based on your preference when submitted.</p>
@@ -334,7 +369,10 @@
             const turnName = names[currentFlowIndex];
             
             document.getElementById('flowTurnTitle').innerText = `Turn: ${turnName} (${currentFlowIndex + 1} of ${currentN})`;
-            document.getElementById('facilityPref').value = 'efficiency'; // reset dropdown
+            
+            // Reset radio buttons to default 'efficiency'
+            const defaultRadio = document.querySelector('input[name="facPref"][value="efficiency"]');
+            if(defaultRadio) defaultRadio.checked = true;
             
             const listContainer = document.getElementById('flowInputsList');
             listContainer.innerHTML = '';
@@ -383,7 +421,8 @@
         }
 
         function submitCurrentFlow() {
-            const pref = document.getElementById('facilityPref').value;
+            const prefRadio = document.querySelector('input[name="facPref"]:checked');
+            const pref = prefRadio ? prefRadio.value : 'efficiency';
 
             for (let j = 0; j < currentN; j++) {
                 const inputEl = document.getElementById(`private_flow_${j}`);
