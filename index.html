@@ -2,14 +2,27 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <!-- Viewport Meta Tag for Mobile Scaling -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Optimal Social Placement</title>
     <style>
-        body { font-family: sans-serif; max-width: 950px; margin: 20px auto; padding: 0 10px; }
+        * { box-sizing: border-box; }
+        
+        body { 
+            font-family: sans-serif; 
+            max-width: 950px; 
+            margin: 15px auto; 
+            padding: 0 12px; 
+            color: #333;
+        }
+
+        h1 { font-size: 1.6rem; margin-top: 5px; }
+        h2 { font-size: 1.1rem; font-weight: normal; color: #555; }
+        h3 { font-size: 1.05rem; margin-top: 20px; }
         
         .control-panel {
             display: flex;
-            flex-wrap: wrap;
-            align-items: center;
+            flex-direction: column;
             gap: 15px;
             background: #f8f9fa;
             padding: 15px;
@@ -17,30 +30,57 @@
             border: 1px solid #ddd;
             margin-bottom: 20px;
         }
-        .control-group { display: flex; flex-direction: column; gap: 4px; }
-        .control-group label { font-size: 13px; font-weight: bold; color: #333; }
-        .control-group input, .control-group select { padding: 6px 10px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; }
+
+        @media (min-width: 600px) {
+            .control-panel {
+                flex-direction: row;
+                flex-wrap: wrap;
+                align-items: center;
+            }
+        }
+
+        .control-group { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+        @media (min-width: 600px) {
+            .control-group { width: auto; }
+        }
+
+        .control-group label { font-size: 14px; font-weight: bold; color: #333; }
+        
+        /* Font size set to 16px to prevent automatic mobile Safari zoom */
+        .control-group input, 
+        .control-group select,
+        .facility-item input[type="text"], 
+        .facility-item input[type="number"] { 
+            padding: 10px; 
+            font-size: 16px; 
+            border-radius: 6px; 
+            border: 1px solid #ccc; 
+            min-height: 44px; /* Finger-friendly height */
+            width: 100%;
+        }
 
         .canvas-box { 
             position: relative; 
             width: 100%; 
-            height: 380px; 
+            height: 350px; 
             border: 2px dashed #666; 
             background: #f9f9f9; 
             border-radius: 8px;
             overflow: hidden; 
             margin-bottom: 20px; 
-            touch-action: none;
+            touch-action: none; /* Prevents screen scrolling during drag */
         }
         
+        /* Enlarged target size for mobile dragging */
         .node {
             position: absolute;
-            width: 36px;
-            height: 36px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
             background: #007bff;
             color: white;
             font-weight: bold;
+            font-size: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -48,12 +88,13 @@
             user-select: none;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
             transition: background 0.2s;
+            touch-action: none;
         }
         .node:active { cursor: grabbing; background: #0056b3; }
         
         .solution-node {
             position: absolute;
-            padding: 6px 12px;
+            padding: 8px 14px;
             border-radius: 20px;
             color: white;
             font-weight: bold;
@@ -68,11 +109,11 @@
         }
         .node-solution { background: #28a745; }
 
-        .result-box { padding: 20px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; margin-top: 20px; }
+        .result-box { padding: 15px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; margin-top: 20px; }
 
         .facility-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            grid-template-columns: 1fr;
             gap: 12px;
             background: #f4f4f9;
             padding: 15px;
@@ -80,44 +121,65 @@
             border: 1px solid #ddd;
             margin-bottom: 20px;
         }
-        .facility-item { display: flex; flex-direction: column; gap: 4px; }
-        .facility-item label { font-size: 13px; font-weight: bold; color: #333; }
-        .facility-item input[type="text"], .facility-item input[type="number"] { padding: 6px 8px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; }
+
+        @media (min-width: 480px) {
+            .facility-grid {
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            }
+        }
+
+        .facility-item { display: flex; flex-direction: column; gap: 6px; }
+        .facility-item label { font-size: 14px; font-weight: bold; color: #333; }
 
         .matrix-container { overflow-x: auto; margin-bottom: 20px; max-height: 280px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; }
-        table { border-collapse: collapse; }
-        th { background: #e9ecef; padding: 6px 8px; font-size: 12px; border: 1px solid #ccc; text-align: center; white-space: nowrap; }
+        table { border-collapse: collapse; width: 100%; }
+        th { background: #e9ecef; padding: 8px; font-size: 12px; border: 1px solid #ccc; text-align: center; white-space: nowrap; }
         td { padding: 2px; }
-        input.dist-input { width: 65px; padding: 4px; font-size: 13px; text-align: center; background-color: #f0f0f0; border: 1px solid #ccc; }
+        input.dist-input { width: 100%; min-width: 50px; padding: 8px; font-size: 14px; text-align: center; background-color: #f0f0f0; border: 1px solid #ccc; }
         
-        .hidden { display: none; }
-        button { padding: 10px 18px; font-size: 15px; cursor: pointer; border-radius: 4px; font-weight: bold; }
+        .hidden { display: none !important; }
+
+        /* Larger tap areas for mobile buttons */
+        button { 
+            padding: 12px 18px; 
+            font-size: 16px; 
+            cursor: pointer; 
+            border-radius: 6px; 
+            font-weight: bold; 
+            min-height: 48px;
+            width: 100%;
+        }
+
+        @media (min-width: 600px) {
+            button { width: auto; }
+        }
+
         .gen-btn { background-color: #007bff; color: white; border: none; }
         .gen-btn:hover { background-color: #0056b3; }
         
-        .solve-btn { background-color: #6f42c1; color: white; border: none; margin-bottom: 20px; transition: opacity 0.3s; }
+        .solve-btn { background-color: #6f42c1; color: white; border: none; margin-bottom: 20px; transition: opacity 0.3s; width: 100%; }
         .solve-btn:hover:not(:disabled) { background-color: #593196; }
         .solve-btn:disabled { background-color: #aaa; cursor: not-allowed; opacity: 0.6; }
 
-        .instruction { font-size: 14px; color: #555; margin-bottom: 8px; }
+        .instruction { font-size: 14px; color: #555; margin-bottom: 10px; line-height: 1.4; }
         .mapping-list { margin-top: 10px; font-size: 15px; line-height: 1.6; margin-bottom: 15px; }
 
         .private-flow-box {
             background: #fffbe6;
             border: 2px solid #ffeeba;
-            padding: 20px;
+            padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
         }
-        .private-flow-box h4 { margin-top: 0; color: #856404; font-size: 18px; }
+        .private-flow-box h4 { margin-top: 0; color: #856404; font-size: 17px; }
         
         .pref-selector {
             background: #fff;
-            padding: 15px;
+            padding: 12px;
             border-radius: 6px;
             border: 1px solid #ffeeba;
             margin-bottom: 15px;
-            max-width: 450px;
+            width: 100%;
         }
         
         .radio-group {
@@ -130,21 +192,32 @@
         .radio-label {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
             font-size: 14px;
             color: #333;
             cursor: pointer;
             font-weight: normal !important;
             background: #f8f9fa;
-            padding: 8px 12px;
-            border-radius: 4px;
+            padding: 10px 12px;
+            border-radius: 6px;
             border: 1px solid #eee;
             transition: background 0.2s;
         }
         
         .radio-label:hover { background: #e9ecef; }
-        .radio-label input[type="radio"] { margin: 0; cursor: pointer; width: 16px; height: 16px; }
+        .radio-label input[type="radio"] { margin: 0; cursor: pointer; width: 20px; height: 20px; flex-shrink: 0; }
 
+        .action-button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        @media (min-width: 600px) {
+            .action-button-group {
+                flex-direction: row;
+            }
+        }
     </style>
 </head>
 <body>
@@ -155,7 +228,6 @@
     <h3>Then, have everyone input how comfortable they are talking with everyone else.</h3>
     <h3>Then solve for the optimal seating/standing arrangement. Extra people can be added for latecomers.</h3>
         
-    
     <div class="control-panel">
         <div class="control-group">
             <label for="nSize">Number of People (up to 16):</label>
@@ -222,9 +294,8 @@
                 <h4 style="color: #155724; margin-bottom: 5px;">✅ Data Collection Complete</h4>
                 <p style="color: #155724; margin-top: 0; margin-bottom: 15px;">All people have confidentially submitted their preferences.</p>
                 
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <div class="action-button-group">
                     <button class="gen-btn" style="background-color: #17a2b8;" onclick="addNewFacility()">➕ Add 1 More Person (N+1)</button>
-                    <!-- OPTION 3 IMPLEMENTED HERE -->
                     <button class="gen-btn" style="background-color: #dc3545;" onclick="if(confirm('Are you sure you want to reset all current flows? This cannot be undone.')) initPrivateFlow(currentN)">Reset Current Flows</button>
                 </div>
             </div>
@@ -382,7 +453,7 @@
             const box = document.getElementById('canvasBox');
             const rect = box.getBoundingClientRect();
             const centerX = (rect.width || 800) / 2;
-            const centerY = (rect.height || 380) / 2;
+            const centerY = (rect.height || 350) / 2;
             createNodeElement(newIndex, Math.round(centerX), Math.round(centerY), box);
 
             document.getElementById('distContainer').innerHTML = buildDistTableHTML(currentN);
@@ -450,7 +521,6 @@
                 input.inputMode = "numeric";
                 input.pattern = "[0-9]*";
         
-                // Ensure only the "flow-to-self" input is read-only. All others must be editable.
                 if (currentFlowIndex === j) {
                     input.value = 0;
                     input.readOnly = true;
@@ -458,7 +528,7 @@
                     input.style.color = "#999";
                 } else {
                     input.value = 1;
-                    input.readOnly = false; // Explicitly enforce that this can be changed
+                    input.readOnly = false;
                 }
 
                 item.appendChild(label);
@@ -476,7 +546,6 @@
             setTimeout(() => {
                 const firstInputId = currentFlowIndex === 0 ? `private_flow_1` : `private_flow_0`;
                 const firstInput = document.getElementById(firstInputId);
-                // Included the preventScroll fix here as well so the screen doesn't jump
                 if(firstInput) firstInput.focus({ preventScroll: true }); 
             }, 100);
         }
@@ -554,10 +623,10 @@
 
             const rect = box.getBoundingClientRect();
             const width = rect.width || box.clientWidth || 800;
-            const height = rect.height || box.clientHeight || 380;
+            const height = rect.height || box.clientHeight || 350;
             const centerX = width / 2;
             const centerY = height / 2;
-            const radius = Math.min(centerX, centerY) - 50;
+            const radius = Math.min(centerX, centerY) - 45;
 
             for (let i = 0; i < n; i++) {
                 const angle = (2 * Math.PI * i) / n;
@@ -572,8 +641,9 @@
             const el = document.createElement('div');
             el.className = 'node';
             el.innerText = index;
-            el.style.left = (x - 18) + 'px';
-            el.style.top = (y - 18) + 'px';
+            // Updated radius offset to 22px for 44px nodes
+            el.style.left = (x - 22) + 'px';
+            el.style.top = (y - 22) + 'px';
 
             const nodeObj = { id: index, x: x, y: y, el: el };
             nodes.push(nodeObj);
@@ -592,14 +662,14 @@
                 const boxRect = container.getBoundingClientRect();
                 let posX = e.clientX - boxRect.left - dragOffset.x;
                 let posY = e.clientY - boxRect.top - dragOffset.y;
-                posX = Math.max(18, Math.min(boxRect.width - 18, posX));
-                posY = Math.max(18, Math.min(boxRect.height - 18, posY));
+                posX = Math.max(22, Math.min(boxRect.width - 22, posX));
+                posY = Math.max(22, Math.min(boxRect.height - 22, posY));
 
                 selectedNode.x = Math.round(posX);
                 selectedNode.y = Math.round(posY);
 
-                el.style.left = (selectedNode.x - 18) + 'px';
-                el.style.top = (selectedNode.y - 18) + 'px';
+                el.style.left = (selectedNode.x - 22) + 'px';
+                el.style.top = (selectedNode.y - 22) + 'px';
                 updateDistanceMatrix();
             });
 
