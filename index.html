@@ -813,6 +813,10 @@
                 }
                 temperature *= coolingRate;
             }
+
+            // Polish the final result with localSearch2Opt to ensure local optimality
+            bestCost = localSearch2Opt(n, distances, flows, bestAssignment, bestCost);
+
             return { assignment: bestAssignment, cost: bestCost };
         }
 
